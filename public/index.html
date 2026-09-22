@@ -95,6 +95,9 @@ a.btn{text-decoration:none}
 #modal.on{display:flex}
 #mPrompt{font:900 clamp(40px,7vw,86px)/1 "Big Shoulders Display",Impact,sans-serif;margin:10px 0}
 #mSub{color:var(--dim);min-height:1.4em}
+#pauseBtn{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:12px;z-index:6;background:rgba(0,0,0,.55);color:var(--ink);border:1px solid var(--mag);border-radius:6px;font:700 20px/1 "Big Shoulders Display",Impact,sans-serif;letter-spacing:2px;padding:10px 14px;cursor:pointer}
+#pauseBtn:hover,#pauseBtn:focus-visible{color:var(--acid);border-color:var(--acid);outline:none}
+#pauseBtn[hidden]{display:none}
 #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#000;border:1px solid var(--mag);padding:10px 16px;display:none;max-width:90vw;z-index:9}
 #toast.on{display:block}
 #calCanvas{width:100%;height:140px;background:#000;border:1px solid var(--line);display:block;margin:10px 0}
@@ -170,20 +173,18 @@ a.btn{text-decoration:none}
   <h2>Songs</h2>
   <p>Clone Hero format songs: .zip downloads, song folders, or files from iCloud and Google Drive.</p>
   <div class="songbar">
-   <div class="addwrap">
-    <button class="btn small" id="addSongBtn" aria-haspopup="true" aria-expanded="false">Add song</button>
-    <div class="addmenu" id="addMenu" hidden>
-     <button class="btn small" id="addFolder">Songs folder</button>
-     <button class="btn small" id="addFiles">Zip or song files</button>
-    </div>
-   </div>
+   <button class="btn small" id="famBtn" aria-expanded="false">Account sign in</button>
    <a class="btn small" href="https://rhythmverse.co/songfiles/game" target="_blank" rel="noopener">RhythmVerse</a>
-   <a class="btn small" href="https://drive.google.com/drive/folders/1ySs9MbRK6UMnPg1ciZH6JvrKAwcOaqze?usp=drive_link" target="_blank" rel="noopener">Google Drive</a>
-   <a class="btn small" href="https://www.icloud.com/iclouddrive/009mqU8h-LI-o7VmPOGfngOqQ#Rockband" target="_blank" rel="noopener">iCloud</a>
-   <button class="btn small" id="famBtn" aria-expanded="false">Family server</button>
+  </div>
+  <div class="addwrap">
+   <button class="btn small" id="addSongBtn" aria-haspopup="true" aria-expanded="false">Add song</button>
+   <div class="addmenu" id="addMenu" hidden>
+    <button class="btn small" id="addFolder">Songs folder</button>
+    <button class="btn small" id="addFiles">Zip or song files</button>
+   </div>
   </div>
   <div class="fambox" id="famBox" hidden>
-   <form id="famForm" class="rv"><input id="famName" maxlength="16" placeholder="Your name" aria-label="Your name" autocomplete="nickname"><input id="famPass" type="password" placeholder="Family password" aria-label="Family password" autocomplete="current-password"><button class="btn small" type="submit">Sign in</button></form>
+   <form id="famForm" class="rv"><input id="famName" maxlength="16" placeholder="Your name" aria-label="Your name" autocomplete="nickname"><input id="famPass" type="password" placeholder="Password" aria-label="Password" autocomplete="current-password"><button class="btn small" type="submit">Sign in</button></form>
    <div id="famIn" hidden><span id="famWho"></span> &nbsp; <button class="btn small" id="famRefresh">Refresh</button> <button class="btn small" id="famOut">Sign out</button></div>
    <div id="famMsg" class="note" aria-live="polite"></div>
   </div>
@@ -246,6 +247,7 @@ a.btn{text-decoration:none}
   <div id="mSub"></div>
   <div style="margin-top:24px"><button class="btn small" id="mSkip">Skip this one</button> &nbsp; <button class="btn small" id="mCancel">Cancel</button></div>
 </div>
+<button id="pauseBtn" hidden aria-label="Pause">❚❚</button>
 <div id="toast"></div>
 
 <!-- ================= CORE (no DOM; tested headless) ================= -->
@@ -910,9 +912,10 @@ function renderDirBar(){
 addEventListener('focus',()=>{if(songDir.state==='granted'&&!(G&&G.running)&&Date.now()-songDir.lastScan>3000)scanSongDir(false)});
 function renderSongs(){
   const L=$('#songList');L.innerHTML='';
-  for(const s of [DEMO,...library]){const b=document.createElement('button');b.className='song'+(selSong&&selSong.id===s.id?' sel':'');
+  if(!library.length){const e=document.createElement('p');e.className='note';e.textContent='No songs yet. Use Add song, or sign in to load the song server.';L.appendChild(e)}
+  for(const s of library){const b=document.createElement('button');b.className='song'+(selSong&&selSong.id===s.id?' sel':'');
     b.innerHTML=`<b></b><span></span>`;b.querySelector('b').textContent=s.title;const sp=b.querySelector('span');
-    if(s.src==='server'){sp.className='srv';sp.textContent=[s.artist,s.files?'family server':`family server · ${Math.round((s.server.size||0)/1048576)} MB${s.cached?' · downloaded':''}`].filter(Boolean).join(' · ')}else sp.textContent=s.artist;
+    if(s.src==='server'){sp.className='srv';sp.textContent=[s.artist,s.files?'server':`server · ${Math.round((s.server.size||0)/1048576)} MB${s.cached?' · downloaded':''}`].filter(Boolean).join(' · ')}else sp.textContent=s.artist;
     b.onclick=()=>selectSong(s);L.appendChild(b)}
 }
 async function loadChart(s){
@@ -927,7 +930,7 @@ async function loadChart(s){
 const cfgMem=store.get('cfg',{guitar:{on:true,part:'guitar',diff:'medium'},drums:{on:true,diff:'medium'},vocals:{on:true,diff:'medium'}});
 async function selectSong(s){
   selSong=s;renderSongs();const D=$('#songDetail');D.innerHTML='<p>Reading chart…</p>';
-  if(s.src==='server'&&!s.files){try{await famDownload(s,f=>{D.innerHTML=`<p>Downloading from the family server… ${Math.round(f*100)}%</p>`})}catch(err){D.innerHTML='';const p=document.createElement('p');p.textContent='Download failed: '+err.message;D.appendChild(p);return}renderSongs();D.innerHTML='<p>Reading chart…</p>'}
+  if(s.src==='server'&&!s.files){try{await famDownload(s,f=>{D.innerHTML=`<p>Downloading… ${Math.round(f*100)}%</p>`})}catch(err){D.innerHTML='';const p=document.createElement('p');p.textContent='Download failed: '+err.message;D.appendChild(p);return}renderSongs();D.innerHTML='<p>Reading chart…</p>'}
   try{await loadChart(s)}catch(err){D.innerHTML='';const p=document.createElement('p');p.textContent='This chart could not be read: '+err.message;D.appendChild(p);return}
   const P=s.parts,has=k=>!!P[k];
   const diffOpts=(avail,cur)=>DIFFS.filter(d=>avail.includes(d)).map(d=>`<option ${d===cur?'selected':''}>${d}</option>`).join('');
@@ -1023,11 +1026,12 @@ async function startGame(s){
   const top=byD=>byD?byD[DIFFS.slice().reverse().find(x=>byD[x])]:[];
   const auto={drums:top(s.parts.drums),guitar:top(s.parts.guitar||s.parts.bass),di:0,gi:0};
   G={song:s,P,t0,end:Math.max(dur,s.length)+0.5,gains,srcs,master,running:true,paused:false,auto,muteGroup,beats:s.beats||[],bi:0,band:0};
-  S.pulse=0;if(Stage3D)Stage3D.reset('crowd');go('none');
+  S.pulse=0;if(Stage3D)Stage3D.reset('crowd');$('#pauseBtn').hidden=false;go('none');
 }
-function stopGame(){if(!G)return;for(const s of G.srcs)try{s.stop()}catch(e){}try{G.master.disconnect()}catch(e){}G.running=false}
-function pause(){if(!G||G.paused)return;G.paused=true;ctx.suspend();go('pause')}
-function resume(){if(!G)return;G.paused=false;ctx.resume();go('none')}
+function stopGame(){$('#pauseBtn').hidden=true;if(!G)return;for(const s of G.srcs)try{s.stop()}catch(e){}try{G.master.disconnect()}catch(e){}G.running=false}
+function pause(){if(!G||G.paused)return;G.paused=true;$('#pauseBtn').hidden=true;ctx.suspend();go('pause')}
+function resume(){if(!G)return;G.paused=false;$('#pauseBtn').hidden=false;ctx.resume();go('none')}
+$('#pauseBtn').onclick=e=>{e.currentTarget.blur();pause()};
 $('#resumeBtn').onclick=resume;
 $('#restartBtn').onclick=()=>{const s=G.song;stopGame();G=null;ctx.resume().then(()=>startGame(s))};
 $('#quitBtn').onclick=()=>{stopGame();G=null;ctx.resume();go('songs')};
@@ -1361,16 +1365,16 @@ async function famDownload(s,progress){
 }
 function renderFam(){
   const inn=!!fam.name;$('#famForm').hidden=inn;$('#famIn').hidden=!inn;if(inn)$('#famWho').textContent='Signed in as '+fam.name;
-  $('#famBtn').textContent=inn?'Family server ✓':'Family server';
+  $('#famBtn').textContent=inn?'Account ✓':'Account sign in';
 }
 $('#famBtn').onclick=()=>{const B=$('#famBox'),open=B.hidden;B.hidden=!open;$('#famBtn').setAttribute('aria-expanded',open);
-  if(open&&!ONLINE)$('#famMsg').textContent='The family server works on your live site, not when opened as a file.';
+  if(open&&!ONLINE)$('#famMsg').textContent='Signing in works on your live site, not when opened as a file.';
   if(open&&!fam.name){$('#famName').value=$('#famName').value||store.get('name','');($('#famName').value?$('#famPass'):$('#famName')).focus()}};
 $('#famForm').onsubmit=async e=>{e.preventDefault();if(!ONLINE)return;const M=$('#famMsg');M.textContent='Signing in…';
   try{const j=await famApi('POST',{action:'login'},{name:$('#famName').value,password:$('#famPass').value});fam.name=j.name;store.set('name',j.name);$('#famPass').value='';renderFam();
-    const n=await famLoadList();M.textContent=`${n} song${n===1?'':'s'} on the family server.`;setTimeout(()=>{$('#famBox').hidden=true},1200)}
+    const n=await famLoadList();M.textContent=`${n} song${n===1?'':'s'} on the server.`;setTimeout(()=>{$('#famBox').hidden=true},1200)}
   catch(err){M.textContent='Could not sign in: '+err.message}};
-$('#famRefresh').onclick=async()=>{const M=$('#famMsg');M.textContent='Checking…';try{const n=await famLoadList();M.textContent=`${n} song${n===1?'':'s'} on the family server.`}catch(err){if(err.status===401){fam.name=null;renderFam()}M.textContent='Could not refresh: '+err.message}};
+$('#famRefresh').onclick=async()=>{const M=$('#famMsg');M.textContent='Checking…';try{const n=await famLoadList();M.textContent=`${n} song${n===1?'':'s'} on the server.`}catch(err){if(err.status===401){fam.name=null;renderFam()}M.textContent='Could not refresh: '+err.message}};
 $('#famOut').onclick=async()=>{try{await famApi('POST',{action:'logout'})}catch(e){}fam.name=null;for(let i=library.length-1;i>=0;i--)if(library[i].src==='server')library.splice(i,1);renderSongs();renderFam();$('#famMsg').textContent='Signed out.'};
 (async()=>{if(!ONLINE)return;try{fam.name=(await famApi('GET',{action:'me'})).name;renderFam();await famLoadList()}catch(e){renderFam()}})();
 </script>
