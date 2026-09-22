@@ -1,0 +1,24 @@
+{
+  // BACKLIT: Cloudflare Worker with static assets.
+  // Bindings must live here, not only in the dashboard: a Git deploy rewrites the Worker's bindings from this file.
+  "name": "backlit",
+  "main": "src/index.js",
+  "compatibility_date": "2026-01-01",
+
+  // the game files
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+
+  // song storage: change bucket_name to your bucket
+  "r2_buckets": [
+    { "binding": "SONGS", "bucket_name": "backlit-songs" }
+  ],
+
+  // leaderboards: change database_name and paste database_id from Storage & Databases > D1
+  "d1_databases": [
+    { "binding": "DB", "database_name": "backlit", "database_id": "PASTE-YOUR-D1-DATABASE-ID" }
+  ]
+
+  // FAMILY_PASSWORD and SESSION_SECRET are secrets: add them in the dashboard, not here.
+  // Optional plain variable, if songs sit in a folder inside the bucket:
+  // "vars": { "SONGS_PREFIX": "songs/" }
+}
