@@ -1,52 +1,53 @@
 # BACKLIT
 
-Rock Band style rhythm game. Hosted on Cloudflare Pages, deployed from GitHub.
+Rock Band style rhythm game. Runs on Cloudflare as a Worker with static assets, deployed from GitHub.
 
 ## What goes where
 
 ```
-public/                 the game itself (everything players download)
+public/               the game itself (what players' browsers load)
   index.html
   sw.js
   manifest.webmanifest
   icon-192.png
   icon-512.png
-functions/api/          server code Cloudflare runs (players never see it)
-  family.js             family song server: sign-in + songs from R2
-  scores.js             leaderboards, stored in D1
-tests/                  checks you can run with Node (not deployed)
+src/
+  index.js            the Worker: sends /api/... to the code below, everything else to public/
+  api/family.js       family song server: sign-in + songs from the R2 bucket
+  api/scores.js       leaderboards, stored in D1
+wrangler.jsonc        Cloudflare settings: which bucket and database to connect
+tests/                checks you can run with Node (not deployed)
 README.md
 ```
 
 ## Cloudflare setup (one time)
 
 1. **R2 bucket for songs.** R2 > Create bucket (e.g. `backlit-songs`). Upload song zips named `Artist - Title.zip`.
-   Optional: put them in a folder like `songs/` and set `SONGS_PREFIX` below.
-2. **D1 database for leaderboards.** Storage & Databases > D1 > Create (e.g. `backlit`). No tables to make; the game creates them.
-3. **Pages project.** Workers & Pages > Create > Pages > Connect to Git > pick this repo.
-   - Framework preset: None
-   - Build command: leave empty
-   - Build output directory: `public`
-4. **Bindings** (Pages project > Settings > Bindings), for Production:
-   - R2 bucket, variable name `SONGS`, bucket `backlit-songs`
-   - D1 database, variable name `DB`, database `backlit`
-5. **Variables and secrets** (Pages project > Settings > Variables and secrets), for Production, type Secret:
+2. **D1 database for leaderboards.** Storage & Databases > D1 > Create (e.g. `backlit`). Copy its database ID.
+   No tables to create; the game makes them on first use.
+3. **Edit `wrangler.jsonc`** in this repo: put your bucket name and the D1 database ID in it.
+   Bindings must be in this file. A Git deploy rewrites the Worker's bindings from it, so ones added
+   only in the dashboard get wiped.
+4. **Create the Worker.** Workers & Pages > Create > Import a repository > pick this repo.
+   No build command is needed; `wrangler.jsonc` describes everything.
+5. **Add the secrets** (Worker > Settings > Variables and Secrets), type Secret:
    - `FAMILY_PASSWORD` the password family members type in
    - `SESSION_SECRET` any random text, 32+ characters (changing it signs everyone out)
-   - `SONGS_PREFIX` optional, e.g. `songs/`
-6. **Redeploy** (Deployments > latest > Retry deployment) so the settings take effect.
+6. **Redeploy** so the settings take effect.
 
 If something is missing, the game's error message names it.
+
+Optional: if songs sit in a folder inside the bucket, uncomment `SONGS_PREFIX` in `wrangler.jsonc`.
 
 ## NAS
 
 Point your NAS's cloud sync (Synology Cloud Sync, QNAP HBS) at the R2 bucket as "S3 compatible" storage,
 one-way upload. Endpoint: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`. Create an R2 API token with
-read and write access to the bucket for it (R2 > Manage API tokens).
+read and write access to the bucket for it (R2 > Manage API tokens). The game itself needs no token.
 
 ## Tests
 
 ```
 node tests/core.test.js
-node tests/functions.test.mjs
+node tests/api.test.mjs
 ```
