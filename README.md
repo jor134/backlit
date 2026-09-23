@@ -13,8 +13,9 @@ public/               the game itself (what players' browsers load)
   icon-512.png
 src/
   index.js            the Worker: sends /api/... to the code below, everything else to public/
-  api/family.js       family song server: sign-in + songs from the R2 bucket
+  api/family.js       song server: sign-in + songs from the R2 bucket
   api/scores.js       leaderboards, stored in D1
+  room.js             band rooms: playing together from different houses
 wrangler.jsonc        Cloudflare settings: which bucket and database to connect
 tests/                checks you can run with Node (not deployed)
 README.md
@@ -35,6 +36,9 @@ README.md
    - `SESSION_SECRET` any random text, 32+ characters (changing it signs everyone out)
 6. **Redeploy** so the settings take effect.
 
+Band rooms need nothing extra: the Durable Object binding and migration are already in `wrangler.jsonc`,
+and Cloudflare creates them on the first deploy.
+
 If something is missing, the game's error message names it.
 
 Optional: if songs sit in a folder inside the bucket, uncomment `SONGS_PREFIX` in `wrangler.jsonc`.
@@ -50,4 +54,5 @@ read and write access to the bucket for it (R2 > Manage API tokens). The game it
 ```
 node tests/core.test.js
 node tests/api.test.mjs
+node tests/room.test.mjs
 ```
