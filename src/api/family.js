@@ -36,6 +36,8 @@ async function limited(env, key, max, windowSec) {
   return !!r && r.n > max;
 }
 
+export const verifySession = (env, request) => readSession(env, request);
+
 export async function onRequest({ request, env }) {
   const missing = ['FAMILY_PASSWORD', 'SESSION_SECRET'].filter(k => !env[k]);
   if (!env.SONGS) missing.push('SONGS (R2 bucket binding)');
