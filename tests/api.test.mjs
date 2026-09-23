@@ -67,7 +67,8 @@ console.log(fails ? fails + ' FAILED' : 'ALL PASS');
   const tmp = path.join(os.tmpdir(), 'bl-index.mjs');
   fs.writeFileSync(tmp, fs.readFileSync(path.join(here, '..', 'src', 'index.js'), 'utf8')
     .replace("'./api/family.js'", JSON.stringify(pathToFileURL(path.join(os.tmpdir(), 'bl-family.mjs')).href))
-    .replace("'./api/scores.js'", JSON.stringify(pathToFileURL(path.join(os.tmpdir(), 'bl-scores.mjs')).href)));
+    .replace("'./api/scores.js'", JSON.stringify(pathToFileURL(path.join(os.tmpdir(), 'bl-scores.mjs')).href))
+    .replace("'./room.js'", JSON.stringify(pathToFileURL(path.join(here, '..', 'src', 'room.js')).href)));
   const worker = (await import(pathToFileURL(tmp).href + '?' + Date.now())).default;
   const withAssets = Object.assign({ ASSETS: { fetch: async () => new Response('the game page', { headers: { 'Content-Type': 'text/html' } }) } }, env);
   const head = { Origin: 'https://backlit.workers.dev', Cookie: jar };
