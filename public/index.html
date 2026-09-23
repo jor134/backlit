@@ -115,6 +115,7 @@ a.btn{text-decoration:none}
     <button class="btn" data-go="songs">Play</button>
     <button class="btn" data-go="setup">Set up instruments</button>
     <button class="btn" data-go="calib">Calibrate timing</button>
+    <button class="btn" data-go="band">Play together</button>
     <button class="btn" data-go="boards">Leaderboards</button>
     <button class="btn" id="installBtn" hidden>Install app</button>
   </nav>
@@ -147,6 +148,9 @@ a.btn{text-decoration:none}
     <div class="meter"><i id="micLvl"></i></div>
     <div class="status" id="micNote"></div>
     <label class="chk"><input type="checkbox" id="aec"> Filter out speaker sound</label>
+    <label>Hear yourself through the speakers <b id="monVal"></b><br><input type="range" id="monitor" min="0" max="1" step="0.05" style="width:100%"></label>
+    <label>Stage reverb <b id="revVal"></b><br><input type="range" id="reverb" min="0" max="1" step="0.05" style="width:100%"></label>
+    <p class="note" id="monNote"></p>
     <button class="btn small" id="micBtn">Turn on mic</button>
    </div>
   </div>
@@ -225,6 +229,31 @@ a.btn{text-decoration:none}
    <button class="btn" id="resBoards">See leaderboard</button>
    <button class="btn" data-go="songs">Song list</button>
   </nav>
+ </div>
+</section>
+
+<section id="scr-band" class="screen">
+ <div class="panel">
+  <h2>Play together</h2>
+  <p>Everyone plays on their own laptop with their own instruments, in their own house. You all need the same song file, and one person picks it.</p>
+  <div id="bandOut">
+   <form id="bnForm" class="rv">
+    <input id="bnName" maxlength="16" placeholder="Your name" aria-label="Your name" autocomplete="nickname">
+    <input id="bnCode" maxlength="8" placeholder="Room code" aria-label="Room code" style="text-transform:uppercase">
+    <button class="btn small" type="submit">Join room</button>
+    <button class="btn small" id="bnNew" type="button">Start a room</button>
+   </form>
+  </div>
+  <div id="bandIn" hidden>
+   <h3 class="display" id="bnRoom"></h3>
+   <p class="note" id="bnSongLine"></p>
+   <div class="tabs" id="bnParts" role="group" aria-label="Your instrument"></div>
+   <div id="bnList" class="board"></div>
+   <div class="rv" id="bnSongRow" hidden><select id="bnSong" aria-label="Song"></select><button class="btn small" id="bnPick">Use this song</button></div>
+   <div class="rv"><button class="btn small" id="bnReady">I'm ready</button><button class="btn small" id="bnStart" hidden>Start the song</button><button class="btn small" id="bnLeave">Leave room</button></div>
+  </div>
+  <div id="bnMsg" class="status" aria-live="polite"></div>
+  <button class="btn" data-go="title">Back</button>
  </div>
 </section>
 
@@ -661,7 +690,7 @@ const KEYS={guitar:{g:'KeyA',r:'KeyS',y:'KeyD',b:'KeyF',o:'KeyG',down:'ArrowDown
 const keyLookup={};for(const r in KEYS)for(const n in KEYS[r])keyLookup[KEYS[r][n]]=[r,n];
 
 const store={get(k,d){try{const v=localStorage.getItem('backlit.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('backlit.'+k,JSON.stringify(v))}catch(e){}}};
-const settings=Object.assign({audioCal:0,videoCal:0,guide:0.6,aec:true,micId:''},store.get('settings',{}));
+const settings=Object.assign({audioCal:0,videoCal:0,guide:0.6,aec:true,micId:'',monitor:0,reverb:0.3},store.get('settings',{}));
 const saveSettings=()=>store.set('settings',settings);
 const inputs={guitar:store.get('in.guitar',{src:'keys'}),drums:store.get('in.drums',{src:'keys'})};
 
@@ -673,7 +702,7 @@ function audio(){if(!ctx)ctx=new (window.AudioContext||window.webkitAudioContext
 
 // ---------- screens ----------
 let screen='title';
-function go(n){screen=n;$$('.screen').forEach(s=>s.classList.toggle('on',s.id==='scr-'+n));if(n==='setup')renderSetup();if(n==='calib')openCalib();if(n==='songs'){renderSongs();renderDirBar()}if(n==='boards')openBoards()}
+function go(n){screen=n;$$('.screen').forEach(s=>s.classList.toggle('on',s.id==='scr-'+n));if(n==='setup')renderSetup();if(n==='calib')openCalib();if(n==='songs'){renderSongs();renderDirBar()}if(n==='boards')openBoards();if(n==='band')renderBand()}
 $$('[data-go]').forEach(b=>b.addEventListener('click',()=>{audio();go(b.dataset.go)}));
 
 // ---------- canvas ----------
@@ -758,14 +787,38 @@ $('#mCancel').onclick=()=>mapping&&mapping.cancel();
 const mic={stream:null,an:null,buf:null,f:0,rms:0,on:false};
 async function startMic(){
   const c=audio();if(mic.stream)mic.stream.getTracks().forEach(t=>t.stop());
-  const opts=id=>({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:settings.aec,noiseSuppression:false,autoGainControl:false}});
+  // speaker filtering fights your own monitored voice, so monitoring wins when it is on
+  const aec=settings.aec&&settings.monitor<=0;
+  const opts=id=>({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:aec,noiseSuppression:false,autoGainControl:false}});
   let s;try{s=await navigator.mediaDevices.getUserMedia(opts(settings.micId))}catch(e){if(settings.micId){settings.micId='';s=await navigator.mediaDevices.getUserMedia(opts(''))}else throw e}
   mic.stream=s;const src=c.createMediaStreamSource(s);mic.an=c.createAnalyser();mic.an.fftSize=2048;src.connect(mic.an);mic.buf=new Float32Array(2048);mic.on=true;
+  // hear yourself through the speakers: high-pass, compressor, a little room reverb
+  const hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=95;
+  const comp=c.createDynamicsCompressor();comp.threshold.value=-20;comp.ratio.value=4;comp.attack.value=0.003;comp.release.value=0.2;
+  const rev=c.createConvolver();rev.buffer=mic.ir||(mic.ir=makeIR(c));
+  mic.dry=c.createGain();mic.wet=c.createGain();mic.out=c.createGain();mic.out.gain.value=0;
+  src.connect(hp).connect(comp);comp.connect(mic.dry).connect(mic.out);comp.connect(rev).connect(mic.wet).connect(mic.out);mic.out.connect(c.destination);
+  mic.duckUntil=0;mic.hot=0;applyMonitor();
   const devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
   const sel=$('#micSel');sel.innerHTML='';devs.forEach(d=>{const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||'Microphone';sel.appendChild(o)});
   const cur=s.getAudioTracks()[0].getSettings().deviceId;sel.value=cur||'';sel.hidden=devs.length<2;
 }
-function readMic(){if(!mic.an)return;mic.an.getFloatTimeDomainData(mic.buf);const r=detectPitch(mic.buf,ctx.sampleRate);mic.rms=r.rms;mic.f=r.f}
+function readMic(){if(!mic.an)return;mic.an.getFloatTimeDomainData(mic.buf);const r=detectPitch(mic.buf,ctx.sampleRate);mic.rms=r.rms;mic.f=r.f;guardFeedback()}
+function makeIR(c){ // small stage-sized room, generated rather than downloaded
+  const sr=c.sampleRate,len=Math.floor(sr*1.7),b=c.createBuffer(2,len,sr),pre=Math.floor(sr*0.012);
+  for(let ch=0;ch<2;ch++){const d=b.getChannelData(ch);
+    for(let i=pre;i<len;i++){const t=(i-pre)/(len-pre);d[i]=(Math.random()*2-1)*Math.pow(1-t,2.6)*(1-t*0.2)}
+    for(const [at,g] of [[0.019,0.5],[0.031,0.38],[0.047,0.3]]){const k=pre+Math.floor(sr*at*(ch?1.07:1));if(k<len)d[k]+=g*(ch?-1:1)}}
+  return b}
+function applyMonitor(){if(!mic.out)return;const t=ctx.currentTime,on=settings.monitor>0&&ctx.currentTime>=mic.duckUntil;
+  mic.out.gain.setTargetAtTime(on?settings.monitor:0,t,0.02);
+  mic.dry.gain.setTargetAtTime(1-settings.reverb*0.55,t,0.05);mic.wet.gain.setTargetAtTime(settings.reverb*0.9,t,0.05)}
+function guardFeedback(){ // a runaway squeal is loud and constant: duck the speakers, not the scoring
+  if(!mic.out||settings.monitor<=0)return;
+  mic.hot=mic.rms>0.34?mic.hot+1:0;
+  if(mic.hot>18&&ctx.currentTime>=mic.duckUntil){mic.duckUntil=ctx.currentTime+2.5;mic.hot=0;applyMonitor();
+    toast('Feedback squeal: your voice is muted for a moment. Point the mic away from the speakers, or use headphones.',6000);
+    setTimeout(applyMonitor,2600)}}
 const NOTE_NAMES=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
 
 // ---------- setup screen ----------
@@ -775,7 +828,10 @@ function renderSetup(){
   $('#stGuitar').textContent=statusText('guitar');$('#stDrums').textContent=statusText('drums');
   $('#dotsGuitar').innerHTML=FRETS.map((f,i)=>`<span class="dot" style="color:${LANE[i]}"></span>`).join('')+'<span class="dot kick" style="color:#fff"></span>';
   $('#dotsDrums').innerHTML=PADS.map((p,i)=>`<span class="dot${i===0?' kick':''}" style="color:${DRUM_COL[i]}"></span>`).join('');
-  $('#aec').checked=settings.aec;
+  $('#aec').checked=settings.aec;$('#monitor').value=settings.monitor;$('#reverb').value=settings.reverb;
+  $('#monVal').textContent=settings.monitor?Math.round(settings.monitor*100)+'%':'off';$('#revVal').textContent=Math.round(settings.reverb*100)+'%';
+  $('#aec').parentElement.style.opacity=settings.monitor>0?0.45:1;
+  $('#monNote').textContent=settings.monitor>0?'Headphones avoid squeal and delay. Speaker filtering is off while this is on.':'';
 }
 function updateSetupLive(){
   const gd=$('#dotsGuitar').children;FRETS.forEach((f,i)=>gd[i]&&gd[i].classList.toggle('on',held('guitar',f)));if(gd[5])gd[5].classList.toggle('on',held('guitar','up')||held('guitar','down'));
@@ -786,6 +842,9 @@ function updateSetupLive(){
 $$('[data-map]').forEach(b=>b.onclick=()=>startMapping(b.dataset.map));
 $$('[data-keys]').forEach(b=>b.onclick=()=>{inputs[b.dataset.keys]={src:'keys'};store.set('in.'+b.dataset.keys,inputs[b.dataset.keys]);renderSetup()});
 $('#micBtn').onclick=async()=>{try{await startMic();$('#micBtn').textContent='Restart mic'}catch(e){$('#stMic').textContent='Mic blocked or missing. Allow microphone access in the address bar.'}};
+$('#monitor').oninput=e=>{const was=settings.monitor;settings.monitor=+e.target.value;saveSettings();applyMonitor();renderSetup();
+  if(mic.on&&(was>0)!==(settings.monitor>0))startMic().catch(()=>{})};
+$('#reverb').oninput=e=>{settings.reverb=+e.target.value;saveSettings();applyMonitor();renderSetup()};
 $('#micSel').onchange=async e=>{settings.micId=e.target.value;saveSettings();try{await startMic()}catch(err){toast('Could not open that mic.')}};
 $('#aec').onchange=async e=>{settings.aec=e.target.checked;saveSettings();if(mic.on)try{await startMic()}catch(err){}};
 
@@ -1003,28 +1062,29 @@ async function loadStems(s){
 // ---------- game ----------
 let G=null;
 const newStats=()=>({score:0,streak:0,best:0,mult:1,hits:0,meter:0.5,next:0,flash:[0,0,0,0,0],fx:[],total:0});
-async function startGame(s){
+async function startGame(s,opt={}){
   const c=audio();$('#songDetail').insertAdjacentHTML('beforeend','<p id="loadMsg">Loading audio…</p>');
   if(G)stopGame();
-  const P={},cfg=cfgMem;
+  const P={},cfg=cfgMem,only=opt.only;
   const pick=(byD,d)=>byD[d]?d:(DIFFS.slice().reverse().find(x=>byD[x]));
-  if(s.parts[cfg.guitar.part]&&cfg.guitar.on){const d=pick(s.parts[cfg.guitar.part],cfg.guitar.diff);P.guitar=Object.assign(newStats(),{role:'guitar',part:cfg.guitar.part,diff:d,notes:s.parts[cfg.guitar.part][d].map(n=>({...n}))})}
-  if(s.parts.drums&&cfg.drums.on){const d=pick(s.parts.drums,cfg.drums.diff);P.drums=Object.assign(newStats(),{role:'drums',diff:d,notes:s.parts.drums[d].map(n=>({...n}))})}
-  if(s.parts.vocals&&cfg.vocals.on){P.vocals=Object.assign(newStats(),{role:'vocals',diff:cfg.vocals.diff,notes:s.parts.vocals.notes.map(n=>({...n,sung:0})),phrases:s.parts.vocals.phrases,hist:[],cur:null});
+  const gPart=only==='bass'||only==='guitar'?only:cfg.guitar.part;
+  if(s.parts[gPart]&&(only?only===gPart:cfg.guitar.on)){const d=pick(s.parts[gPart],cfg.guitar.diff);P.guitar=Object.assign(newStats(),{role:'guitar',part:gPart,diff:d,notes:s.parts[gPart][d].map(n=>({...n}))})}
+  if(s.parts.drums&&(only?only==='drums':cfg.drums.on)){const d=pick(s.parts.drums,cfg.drums.diff);P.drums=Object.assign(newStats(),{role:'drums',diff:d,notes:s.parts.drums[d].map(n=>({...n}))})}
+  if(s.parts.vocals&&(only?only==='vocals':cfg.vocals.on)){P.vocals=Object.assign(newStats(),{role:'vocals',diff:cfg.vocals.diff,notes:s.parts.vocals.notes.map(n=>({...n,sung:0})),phrases:s.parts.vocals.phrases,hist:[],cur:null});
     if(!mic.on){try{await startMic()}catch(e){toast('Mic unavailable, so vocals are off.');delete P.vocals}}}
   if(!Object.keys(P).length){toast('Turn on at least one part.');$('#loadMsg')&&$('#loadMsg').remove();return}
   for(const k in P)P[k].total=P[k].notes.length;
   let stems;try{stems=await loadStems(s)}catch(e){toast('Audio failed to load: '+e.message);return}
   $('#loadMsg')&&$('#loadMsg').remove();
   const master=c.createGain();master.gain.value=0.9;master.connect(c.destination);
-  const gains={};const t0=c.currentTime+3;let dur=0;const srcs=[];
+  const gains={};const t0=opt.at?Math.max(c.currentTime+0.6,c.currentTime+(opt.at-Date.now())/1000):c.currentTime+3;let dur=0;const srcs=[];
   const muteGroup=P.guitar?P.guitar.part:null;
   for(const st of stems){if(!gains[st.group]){gains[st.group]=c.createGain();gains[st.group].connect(master);if(st.group==='vocals'&&P.vocals)gains.vocals.gain.value=settings.guide}
     const src=c.createBufferSource();src.buffer=st.buffer;src.connect(gains[st.group]);src.start(t0);srcs.push(src);dur=Math.max(dur,st.buffer.duration)}
   // stage auto-animation feeds (expert charts)
   const top=byD=>byD?byD[DIFFS.slice().reverse().find(x=>byD[x])]:[];
   const auto={drums:top(s.parts.drums),guitar:top(s.parts.guitar||s.parts.bass),di:0,gi:0};
-  G={song:s,P,t0,end:Math.max(dur,s.length)+0.5,gains,srcs,master,running:true,paused:false,auto,muteGroup,beats:s.beats||[],bi:0,band:0};
+  G={song:s,P,t0,end:Math.max(dur,s.length)+0.5,gains,srcs,master,running:true,paused:false,auto,muteGroup,beats:s.beats||[],bi:0,band:0,online:!!opt.at,lastPush:0};
   S.pulse=0;if(Stage3D)Stage3D.reset('crowd');$('#pauseBtn').hidden=false;go('none');
 }
 function stopGame(){$('#pauseBtn').hidden=true;if(!G)return;for(const s of G.srcs)try{s.stop()}catch(e){}try{G.master.disconnect()}catch(e){}G.running=false}
@@ -1075,6 +1135,9 @@ function updateGame(dt){
   if(!G.P.drums)while(A.di<A.drums.length&&A.drums[A.di].t<=now){S.drum(A.drums[A.di].lane,true);A.di++}
   if(!G.P.guitar)while(A.gi<A.guitar.length&&A.guitar[A.gi].t<=now){S.strum(true);A.gi++}
   if(!G.P.vocals){const vn=G.song.parts.vocals;let on=0;if(vn)for(const n of vn.notes)if(n.t<=now&&n.end>=now){on=1;break}S.vLevel+=(on*0.7-S.vLevel)*Math.min(1,dt*8)}
+  if(G.online&&ctx.currentTime-G.lastPush>0.5){G.lastPush=ctx.currentTime;let sc=0,hi=0,to=0,st=0;
+    for(const k in G.P){sc+=G.P[k].score;hi+=G.P[k].hits;to+=G.P[k].total;st=Math.max(st,G.P[k].streak)}
+    netSend({t:'score',score:sc,streak:st,acc:to?Math.round(100*hi/to):0})}
   while(G.bi<G.beats.length&&G.beats[G.bi]<=now){S.pulse=1;S.beatN++;G.bi++}
   {const vn=G.song.parts.vocals;S.vAct=0;if(vn)for(let i=G.P.vocals?Math.max(0,G.P.vocals.next-1):0;i<vn.notes.length;i++){const n=vn.notes[i];if(n.t>now+0.5)break;if(n.end>=now-0.5){S.vAct=1;break}}}
   if(now>G.end)finishGame();
@@ -1102,6 +1165,8 @@ function finishGame(){
     d.querySelector('h3').textContent=PART_NAME[part];B.appendChild(d)}
   store.set('best',bests);
   $('#resTitle').textContent=`Band score ${band.toLocaleString()}`;
+  if(G.online&&net.ws){const e0=entries.slice().sort((a,b)=>b.score-a.score)[0]||{};
+    netSend({t:'done',score:band,part:net.part,diff:e0.diff,acc:e0.acc,streak:e0.streak,hits:e0.hits,total:e0.total})}
   lastResult={song,sid,entries,posted:false};
   const PP=$('#postParts');PP.innerHTML='';
   entries.forEach((e,i)=>{const l=document.createElement('label');l.className='chk';l.innerHTML=`<input type="checkbox" data-i="${i}" ${e.score>0?'checked':'disabled'}> <span></span>`;
@@ -1299,6 +1364,9 @@ function frame(nowMs){
     // band HUD
     let band=0;for(const k in G.P)band+=G.P[k].score;
     g.textAlign='right';g.fillStyle='#fff';g.font=font(Math.round(stageH*0.13));g.fillText(band.toLocaleString(),W-18,stageH*0.16);g.textAlign='center';
+    if(G.online&&net.state){let y=stageH*0.28;g.font=font(Math.round(stageH*0.06),700);g.textAlign='right';
+      for(const q of net.state.players){if(q.id===net.me||!q.part)continue;g.fillStyle=q.done?'rgba(255,255,255,.45)':'#00f0ff';
+        g.fillText(`${q.name} · ${q.score.toLocaleString()}`,W-18,y);y+=stageH*0.075}}
     g.fillStyle=hexA('#ff2bd6',0.9);g.fillRect(0,0,W*Math.max(0,Math.min(1,now/G.end)),3);
     if(now<0){g.font=font(Math.round(stageH*0.5));g.fillStyle='#eaff00';g.fillText(Math.ceil(-now),W/2,stageH*0.62)}
     if(now<4){g.font=font(Math.round(stageH*0.09),700);g.fillStyle='rgba(255,255,255,.85)';g.fillText(G.song.title+(G.song.artist&&!G.song.demo?' — '+G.song.artist:''),W/2,stageH*0.28)}
@@ -1323,6 +1391,102 @@ $('#installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prom
 addEventListener('appinstalled',()=>{$('#installBtn').hidden=true;toast('Installed. BACKLIT now opens in its own window.')});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 addEventListener('gamepadconnected',e=>toast('Controller connected: '+e.gamepad.id.slice(0,50)));
+
+// ---------- band rooms: play together from different houses ----------
+const net={ws:null,code:null,me:null,host:false,offset:0,samples:[],state:null,part:null,ready:false,song:null,matched:null,lastSong:null,pingT:null};
+const netSend=o=>{if(net.ws&&net.ws.readyState===1)net.ws.send(JSON.stringify(o))};
+const netIn=()=>!!(net.ws&&net.ws.readyState===1);
+function netPing(){netSend({t:'ping',c:Date.now()})}
+function netLeave(quiet){clearInterval(net.pingT);if(net.ws){try{net.ws.close()}catch(e){}}
+  net.ws=null;net.state=null;net.song=null;net.matched=null;net.lastSong=null;net.ready=false;if(!quiet)renderBand()}
+function netJoin(code,name){
+  netLeave(true);
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/room?'+new URLSearchParams({code,name}));
+  net.ws=ws;net.code=code;net.samples=[];
+  ws.onopen=()=>{store.set('name',name);netPing();net.pingT=setInterval(netPing,4000);if(net.part)netSend({t:'part',part:net.part});renderBand();$('#bnMsg').textContent='In room '+code+'. Share the code with the band.'};
+  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(err){return}
+    if(m.t==='you')net.me=m.id;
+    else if(m.t==='pong'){const rtt=Date.now()-m.c;net.samples.push(m.now+rtt/2-Date.now());if(net.samples.length>7)net.samples.shift();net.offset=median(net.samples)}
+    else if(m.t==='state'){net.state=m;net.host=m.host===net.me;
+      const sid=m.song&&m.song.id||null;if(sid!==net.lastSong){net.lastSong=sid;netMatchSong()}
+      renderBand();if(screen==='results')renderBandResults()}
+    else if(m.t==='go'){net.song=m.song;netStart(m.startAt)}};
+  ws.onclose=()=>{if(net.ws===ws){clearInterval(net.pingT);net.ws=null;net.state=null;renderBand();$('#bnMsg').textContent='Left the room.'}};
+  ws.onerror=()=>{$('#bnMsg').textContent='Could not reach the room. Sign in on the songs page first.'};
+}
+async function netMatchSong(){
+  const sg=net.state&&net.state.song;net.matched=null;net.ready=false;
+  if(!sg){netSend({t:'have',ok:false});return}
+  $('#bnMsg').textContent='Looking for '+sg.title+'…';
+  for(const s of library){if(s.src==='server'&&!s.files)continue;
+    try{await loadChart(s);if(songId(s)===sg.id){net.matched=s;break}}catch(e){}}
+  if(!net.matched&&sg.key){const s=library.find(x=>x.server&&x.server.key===sg.key);
+    if(s)try{$('#bnMsg').textContent='Downloading '+sg.title+'…';await famDownload(s,f=>{$('#bnMsg').textContent=`Downloading ${sg.title}… ${Math.round(f*100)}%`});await loadChart(s);if(songId(s)===sg.id)net.matched=s}catch(e){}}
+  $('#bnMsg').textContent=net.matched?'You have this song.':"You don't have this song. Ask for the file, or sign in and download it from the server.";
+  netSend({t:'have',ok:!!net.matched});renderBand();
+}
+async function netPickSong(){
+  const s=library.find(x=>x.id===$('#bnSong').value);if(!s)return;
+  try{if(s.src==='server'&&!s.files){$('#bnMsg').textContent='Downloading…';await famDownload(s,()=>{})}
+    await loadChart(s);netSend({t:'song',song:{id:songId(s),title:s.title,artist:s.artist,key:s.server?s.server.key:null}})}
+  catch(err){$('#bnMsg').textContent='Could not use that song: '+err.message}
+}
+function netStart(startAt){
+  if(!net.matched){$('#bnMsg').textContent="The band started, but you don't have this song.";return}
+  const localAt=startAt-net.offset,wait=Math.max(0,localAt-Date.now());
+  $('#bnMsg').textContent=`Starting in ${Math.round(wait/1000)}…`;
+  startGame(net.matched,{at:localAt,only:net.part}).catch(err=>{$('#bnMsg').textContent='Could not start: '+err.message});
+}
+function renderBand(){
+  const inRoom=netIn();
+  $('#bandOut').hidden=inRoom;$('#bandIn').hidden=!inRoom;
+  if(!inRoom){if(!$('#bnName').value)$('#bnName').value=store.get('name','');return}
+  $('#bnRoom').textContent='Room '+net.code;
+  const st=net.state;if(!st)return;
+  const taken=new Set(st.players.filter(p=>p.id!==net.me&&p.part).map(p=>p.part));
+  tabs($('#bnParts'),[['guitar','Guitar'],['bass','Bass'],['drums','Drums'],['vocals','Vocals']].map(([v,l])=>[v,taken.has(v)?l+' (taken)':l]),net.part,
+    v=>{if(taken.has(v))return;net.part=net.part===v?null:v;net.ready=false;netSend({t:'part',part:net.part});netSend({t:'ready',ok:false});renderBand()});
+  $('#bnSongLine').textContent=st.song?`Song: ${st.song.title}${st.song.artist?' — '+st.song.artist:''}`:'No song picked yet.';
+  const L=$('#bnList');L.innerHTML='';
+  const tb=document.createElement('table');tb.innerHTML='<thead><tr><th>Player</th><th>Instrument</th><th>Status</th><th class="sc">Score</th></tr></thead><tbody></tbody>';
+  for(const p of st.players){const tr=document.createElement('tr');
+    const status=p.result?`finished · ${p.result.acc}%`:!p.part?'watching':!st.song?'waiting for a song':!p.hasSong?'missing this song':p.ready?'ready':'not ready';
+    tr.innerHTML='<td class="n"></td><td class="i"></td><td class="s"></td><td class="sc"></td>';
+    tr.querySelector('.n').textContent=p.name+(p.id===st.host?' (host)':'')+(p.id===net.me?' · you':'');
+    tr.querySelector('.i').textContent=p.part?PART_NAME[p.part]:'—';
+    tr.querySelector('.s').textContent=status;tr.querySelector('.sc').textContent=p.score?p.score.toLocaleString():'';
+    tb.tBodies[0].appendChild(tr)}
+  L.appendChild(tb);
+  $('#bnSongRow').hidden=!net.host;
+  if(net.host){const sel=$('#bnSong'),cur=sel.value;sel.innerHTML='';
+    for(const s of library){const o=document.createElement('option');o.value=s.id;o.textContent=s.title+(s.artist?' — '+s.artist:'')+(s.src==='server'&&!s.files?' (on server)':'');sel.appendChild(o)}
+    if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur}
+  const band=st.players.filter(p=>p.part);
+  $('#bnReady').textContent=net.ready?"I'm not ready":"I'm ready";
+  $('#bnReady').disabled=!net.part||!net.matched;
+  $('#bnStart').hidden=!net.host;
+  $('#bnStart').disabled=!(st.song&&band.length&&band.every(p=>p.ready&&p.hasSong));
+}
+function renderBandResults(){
+  if(!net.state)return;const others=net.state.players.filter(p=>p.id!==net.me&&p.part&&p.result);
+  let box=$('#bandRes');if(!box){box=document.createElement('div');box.id='bandRes';box.className='res';$('#resBody').after(box)}
+  box.innerHTML='';if(!others.length)return;
+  const total=net.state.players.reduce((a,p)=>a+(p.result?p.result.score:0),0);
+  const h=document.createElement('h3');h.className='display';h.textContent=net.state.finished?`Band total ${total.toLocaleString()}`:'Waiting for the rest of the band…';box.appendChild(h);
+  for(const p of others){const d=document.createElement('div');d.textContent=`${p.name} · ${PART_NAME[p.part]} · ${p.result.score.toLocaleString()} · ${p.result.acc}%`;box.appendChild(d)}
+}
+$('#bnForm').onsubmit=e=>{e.preventDefault();const name=$('#bnName').value.trim(),code=$('#bnCode').value.trim().toUpperCase();
+  if(!name){$('#bnMsg').textContent='Enter your name.';return}
+  if(!/^[A-Z0-9]{4,8}$/.test(code)){$('#bnMsg').textContent='Room codes are 4 to 8 letters or numbers.';return}
+  netJoin(code,name)};
+$('#bnNew').onclick=()=>{const name=$('#bnName').value.trim()||store.get('name','');
+  if(!name){$('#bnMsg').textContent='Enter your name first.';return}
+  const code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
+  $('#bnCode').value=code;netJoin(code,name)};
+$('#bnPick').onclick=netPickSong;
+$('#bnReady').onclick=()=>{net.ready=!net.ready;netSend({t:'ready',ok:net.ready});renderBand()};
+$('#bnLeave').onclick=()=>netLeave();
+$('#bnStart').onclick=()=>netSend({t:'start'});
 
 // ---------- family song server (sign-in + R2 downloads, cached in the browser) ----------
 const fam={name:null};
