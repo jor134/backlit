@@ -15,7 +15,7 @@
 
   // leaderboards: change database_name and paste database_id from Storage & Databases > D1
   "d1_databases": [
-    { "binding": "DB", "database_name": "backlit", "database_id": "PASTE-YOUR-D1-DATABASE-ID" }
+    { "binding": "DB", "database_name": "backlit", "database_id": "45ae82c2-e831-48d5-b29b-a0e467cea105" }
   ],
 
   // band rooms (playing together from different houses)
