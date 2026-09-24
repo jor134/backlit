@@ -50,6 +50,17 @@ label.chk{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--ink)}
 .list{flex:1 1 380px;max-height:62vh;overflow:auto;border-top:1px solid var(--line)}
 .song{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--ink);padding:10px 4px;cursor:pointer;font:inherit}
 .song b{display:block;font:700 22px "Big Shoulders Display",Impact,sans-serif}
+.grp{border-bottom:1px solid var(--line)}
+.grp summary{display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;padding:9px 4px;list-style:none;font:700 24px "Big Shoulders Display",Impact,sans-serif}
+.grp summary::-webkit-details-marker{display:none}
+.grp summary::before{content:'▸';color:var(--mag);font-size:15px;transition:transform .12s}
+.grp[open] summary::before{content:'▾'}
+.grp summary .ar{flex:1}
+.grp summary .n{color:var(--dim);font:600 14px Barlow,sans-serif}
+.grp summary:hover,.grp summary:focus-visible{color:var(--acid);outline:none}
+.grp .song{padding-left:22px;border-bottom:0}
+.grp:not([open]) .song{display:none}
+.grp .song:last-child{margin-bottom:8px}
 .song span{color:var(--dim);font-size:14px}
 .song:hover,.song:focus-visible,.song.sel{background:rgba(255,43,214,.12);outline:none}
 .detail{flex:1 1 360px}
@@ -1027,13 +1038,27 @@ function renderDirBar(){
   renderDirBar();if(songDir.state==='granted')scanSongDir(true);
 })();
 addEventListener('focus',()=>{if(songDir.state==='granted'&&!(G&&G.running)&&Date.now()-songDir.lastScan>3000)scanSongDir(false)});
+const openArtists=new Set();
 function renderSongs(){
   const L=$('#songList');L.innerHTML='';
-  if(!library.length){const e=document.createElement('p');e.className='note';e.textContent='No songs yet. Use Add song, or sign in to load the song server.';L.appendChild(e)}
-  for(const s of library){const b=document.createElement('button');b.className='song'+(selSong&&selSong.id===s.id?' sel':'');
+  if(!library.length){const e=document.createElement('p');e.className='note';e.textContent='No songs yet. Use Add song, or sign in to load the song server.';L.appendChild(e);return}
+  const byArtist=new Map();
+  for(const s of library){const a=(s.artist||'Unknown artist').trim()||'Unknown artist';if(!byArtist.has(a))byArtist.set(a,[]);byArtist.get(a).push(s)}
+  const artists=[...byArtist.keys()].sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+  if(artists.length===1)openArtists.add(artists[0]);
+  for(const a of artists){
+    const songs=byArtist.get(a).sort((x,y)=>x.title.localeCompare(y.title,undefined,{sensitivity:'base'}));
+    const d=document.createElement('details');d.className='grp';
+    d.open=openArtists.has(a)||songs.some(x=>selSong&&selSong.id===x.id);
+    d.ontoggle=()=>{d.open?openArtists.add(a):openArtists.delete(a)};
+    const sum=document.createElement('summary');sum.innerHTML='<span class="ar"></span><span class="n"></span>';
+    sum.querySelector('.ar').textContent=a;sum.querySelector('.n').textContent=songs.length;
+    d.appendChild(sum);L.appendChild(d);
+    for(const s of songs){const b=document.createElement('button');b.className='song'+(selSong&&selSong.id===s.id?' sel':'');
     b.innerHTML=`<b></b><span></span>`;b.querySelector('b').textContent=s.title;const sp=b.querySelector('span');
-    if(s.src==='server'){sp.className='srv';sp.textContent=[s.artist,s.files?'server':`server · ${Math.round((s.server.size||0)/1048576)} MB${s.cached?' · downloaded':''}`].filter(Boolean).join(' · ')}else sp.textContent=s.artist;
-    b.onclick=()=>selectSong(s);L.appendChild(b)}
+    if(s.src==='server'){sp.className='srv';sp.textContent=s.files?'server':`server · ${Math.round((s.server.size||0)/1048576)} MB${s.cached?' · downloaded':''}`}else sp.textContent='';
+    b.onclick=()=>selectSong(s);d.appendChild(b)}
+  }
 }
 async function loadChart(s){
   if(s.parts)return;
