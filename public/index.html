@@ -559,50 +559,60 @@ const Stage3D=(()=>{
   const glow=(color,size,op)=>{const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,color,transparent:true,opacity:op,blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));s.scale.set(size,size,1);return s};
 
   // ---- rigged silhouette figure ----
-  // costume bits so the band reads as rockers in silhouette
-  function hat(head,r,style){
-    if(style==='fedora'){part(head,new THREE.CylinderGeometry(0.28,0.3,0.012,20),r,0,0.1,0);part(head,new THREE.CylinderGeometry(0.115,0.13,0.15,16),r,0,0.17,0)}
-    else if(style==='cap'){part(head,new THREE.SphereGeometry(0.135,14,10,0,Math.PI*2,0,Math.PI/2),r,0,0.04,0);part(head,new THREE.BoxGeometry(0.2,0.02,0.18),r,0,0.05,0.16,-0.15)}
-    else if(style==='top'){part(head,new THREE.CylinderGeometry(0.24,0.26,0.012,20),r,0,0.1,0);part(head,new THREE.CylinderGeometry(0.125,0.135,0.3,16),r,0,0.25,0)}
+  // ---- figures: one body plan for everyone, so heads are the same size on every player ----
+  const HEAD=0.115;
+  // headwear and hair are kept close to the skull (about 1.35x head radius at most)
+  // so every player's head silhouette reads as the same size
+  function hat(head,r,style,lift=0){
+    if(style==='fedora'){part(head,new THREE.CylinderGeometry(0.19,0.2,0.012,22),r,0,0.1+lift,0);part(head,new THREE.CylinderGeometry(0.095,0.112,0.11,18),r,0,0.16+lift,0)}
+    else if(style==='cap'){part(head,new THREE.SphereGeometry(HEAD*1.07,16,10,0,Math.PI*2,0,Math.PI/2),r,0,0.03,0);part(head,new THREE.BoxGeometry(0.17,0.018,0.14),r,0,0.04,0.14,-0.12)}
+    else if(style==='top'){part(head,new THREE.CylinderGeometry(0.165,0.175,0.012,22),r,0,0.1,0);part(head,new THREE.CylinderGeometry(0.1,0.11,0.17,18),r,0,0.19,0)}
   }
   function mane(head,r,style){
-    if(style==='spikes'){for(let i=0;i<9;i++){const a=(i/9)*Math.PI*2,g=new THREE.ConeGeometry(0.035,0.2+0.06*(i%3),6);
-      part(head,g,r,Math.cos(a)*0.075,0.12,Math.sin(a)*0.06-0.01,Math.sin(a)*0.5,0,-Math.cos(a)*0.5)}}
-    else if(style==='long'){const g=new THREE.SphereGeometry(0.14,14,12);g.scale(1.05,1.7,0.95);part(head,g,r,0,-0.09,-0.05);
-      const t=new THREE.CylinderGeometry(0.07,0.03,0.42,8);part(head,t,r,0,-0.3,-0.12,0.25)}
-    else if(style==='afro'){const g=new THREE.SphereGeometry(0.22,16,14);g.scale(1,0.95,1);part(head,g,r,0,0.05,-0.01)}
+    if(style==='spikes'){for(let i=0;i<7;i++){const a=-0.9+i*0.3,g=new THREE.ConeGeometry(0.03,0.1+0.04*(i%2),6);
+      part(head,g,r,Math.sin(a)*HEAD*0.75,0.1+Math.cos(a)*0.03,-0.02-Math.abs(Math.sin(a))*0.02,-0.25,0,-a*0.9)}}
+    else if(style==='long'){const g=new THREE.SphereGeometry(HEAD*1.06,16,12);g.scale(1.02,1.35,0.92);part(head,g,r,0,-0.04,-0.04);
+      part(head,new THREE.CylinderGeometry(0.05,0.022,0.26,8),r,0,-0.24,-0.09,0.22)}
+    else if(style==='afro'){part(head,new THREE.SphereGeometry(HEAD*1.35,18,14),r,0,0.035,-0.01)}
   }
   function jacket(spine,r,style){
-    const j=new THREE.CylinderGeometry(0.25,0.19,0.5,16,1,true);j.scale(1,1,0.72);part(spine,j,r,0,0.3,0);     // open coat over the torso
-    part(spine,new THREE.BoxGeometry(0.1,0.42,0.06),r,-0.16,0.31,0.14,0,0,0.12);                                // lapels
-    part(spine,new THREE.BoxGeometry(0.1,0.42,0.06),r,0.16,0.31,0.14,0,0,-0.12);
-    if(style==='long'){const t=new THREE.CylinderGeometry(0.19,0.24,0.45,14,1,true);t.scale(1,1,0.7);part(spine,t,r,0,-0.18,-0.02,-0.12)} // coat tails
-    if(style==='studs')for(let i=0;i<5;i++)part(spine,new THREE.SphereGeometry(0.018,6,5),r,-0.2+i*0.1,0.52,0.1);
+    const j=new THREE.CylinderGeometry(0.245,0.185,0.5,16,1,true);j.scale(1,1,0.72);part(spine,j,r,0,0.31,0);
+    part(spine,new THREE.BoxGeometry(0.09,0.4,0.05),r,-0.15,0.33,0.14,0,0,0.13);   // lapels
+    part(spine,new THREE.BoxGeometry(0.09,0.4,0.05),r,0.15,0.33,0.14,0,0,-0.13);
+    part(spine,new THREE.BoxGeometry(0.34,0.06,0.2),r,0,0.55,-0.02);               // collar across the shoulders
+    if(style==='long'){const t=new THREE.CylinderGeometry(0.19,0.25,0.5,14,1,true);t.scale(1,1,0.7);part(spine,t,r,0,-0.2,-0.03,-0.1)}
+    if(style==='studs')for(let i=0;i<6;i++)part(spine,new THREE.SphereGeometry(0.016,6,5),r,-0.22+i*0.088,0.555,0.08);
   }
-  function figure(r,hair){
-    const root=new THREE.Group(),hips=new THREE.Group();hips.position.y=0.95;root.add(hips);
-    const lg=limbGeo(0.075,0.05,0.95);
-    const legL=new THREE.Group();legL.position.x=-0.11;hips.add(legL);part(legL,lg,r);
-    const legR=new THREE.Group();legR.position.x=0.11;hips.add(legR);part(legR,lg,r);
+  function figure(r){
+    const root=new THREE.Group(),hips=new THREE.Group();hips.position.y=0.96;root.add(hips);
+    const pel=new THREE.CylinderGeometry(0.15,0.13,0.16,14);pel.scale(1,1,0.7);part(hips,pel,r,0,0.02,0);
+    const leg=side=>{const th=new THREE.Group();th.position.x=side*0.1;hips.add(th);part(th,limbGeo(0.078,0.06,0.47),r);
+      const kn=new THREE.Group();kn.position.y=-0.47;th.add(kn);part(kn,new THREE.SphereGeometry(0.062,10,8),r);part(kn,limbGeo(0.06,0.048,0.44),r);
+      const bt=new THREE.Group();bt.position.y=-0.44;kn.add(bt);
+      part(bt,new THREE.CylinderGeometry(0.072,0.078,0.2,12),r,0,0.06,0);               // boot shaft
+      part(bt,new THREE.BoxGeometry(0.11,0.07,0.24),r,0,-0.015,0.055);                  // boot foot
+      return {th,kn}};
+    const L=leg(-1),Rt=leg(1);
     const spine=new THREE.Group();hips.add(spine);
-    const tg=new THREE.CylinderGeometry(0.21,0.14,0.62,14);tg.scale(1,1,0.62);part(spine,tg,r,0,0.31,0);
+    const chest=new THREE.CylinderGeometry(0.2,0.15,0.34,16);chest.scale(1,1,0.62);part(spine,chest,r,0,0.42,0);
+    const waist=new THREE.CylinderGeometry(0.15,0.14,0.26,14);waist.scale(1,1,0.65);part(spine,waist,r,0,0.14,0);
     const head=new THREE.Group();head.position.y=0.74;spine.add(head);
-    part(head,new THREE.CylinderGeometry(0.045,0.05,0.12,8),r,0,-0.1,0);
-    part(head,new THREE.SphereGeometry(0.115,18,14),r,0,0.02,0);
-    if(hair){const hg=new THREE.SphereGeometry(0.125,14,12);hg.scale(1,1.5,0.85);part(head,hg,r,0,-0.07,-0.05)}
-    part(legL,new THREE.CylinderGeometry(0.085,0.09,0.26,12),r,0,-0.82,0.01);   // boots
-    part(legR,new THREE.CylinderGeometry(0.085,0.09,0.26,12),r,0,-0.82,0.01);
-    const arm=side=>{const sh=new THREE.Group();sh.position.set(side*0.25,0.56,0);spine.add(sh);part(sh,limbGeo(0.055,0.045,0.3),r);
-      part(sh,new THREE.CylinderGeometry(0.075,0.06,0.2,10),r,0,-0.08,0);        // jacket sleeve
-      const el=new THREE.Group();el.position.y=-0.3;sh.add(el);part(el,limbGeo(0.045,0.038,0.27),r);
-      const hand=new THREE.Group();hand.position.y=-0.28;el.add(hand);part(hand,new THREE.SphereGeometry(0.045,8,6),null);return {sh,el,hand}};
-    return {root,hips,spine,head,legL,legR,A:arm(1),B:arm(-1)};
+    part(head,new THREE.CylinderGeometry(0.045,0.052,0.12,8),r,0,-0.1,0);
+    part(head,new THREE.SphereGeometry(HEAD,20,16),r,0,0.02,0);
+    const jaw=new THREE.SphereGeometry(0.082,12,10);jaw.scale(1,0.8,1.05);part(head,jaw,r,0,-0.035,0.03);
+    const arm=side=>{const sh=new THREE.Group();sh.position.set(side*0.235,0.56,0);spine.add(sh);
+      part(sh,new THREE.SphereGeometry(0.072,12,10),r);                                 // shoulder
+      part(sh,limbGeo(0.058,0.046,0.3),r);part(sh,new THREE.CylinderGeometry(0.078,0.062,0.2,10),r,0,-0.08,0); // sleeve
+      const el=new THREE.Group();el.position.y=-0.3;sh.add(el);part(el,new THREE.SphereGeometry(0.048,10,8),r);part(el,limbGeo(0.046,0.038,0.27),r);
+      const hand=new THREE.Group();hand.position.y=-0.28;el.add(hand);const hg=new THREE.SphereGeometry(0.05,10,8);hg.scale(1,1.2,0.8);part(hand,hg,null);
+      return {sh,el,hand}};
+    return {root,hips,spine,head,legL:L.th,legR:Rt.th,kL:L.kn,kR:Rt.kn,A:arm(1),B:arm(-1)};
   }
 
   // ---- guitarist ----
   const gR=rim(MAG),GT=figure(gR);GT.root.position.set(-3.6,0,0.3);GT.root.rotation.y=0.4;scene.add(GT.root);
   mane(GT.head,gR,'spikes');jacket(GT.spine,gR,'studs');
-  GT.legL.rotation.z=-0.2;GT.legR.rotation.z=0.2;
+  GT.legL.rotation.set(-0.12,0,-0.3);GT.legR.rotation.set(-0.12,0,0.3);GT.kL.rotation.set(0.3,0,0.2);GT.kR.rotation.set(0.3,0,-0.2);
   const guitar=new THREE.Group();guitar.position.set(0,0.2,0.2);guitar.rotation.z=0.45;GT.spine.add(guitar);
   part(guitar,new THREE.CylinderGeometry(0.21,0.21,0.07,24),gR,-0.02,0,0,Math.PI/2);
   part(guitar,new THREE.CylinderGeometry(0.15,0.15,0.07,20),gR,0.2,0.02,0,Math.PI/2);
@@ -613,10 +623,10 @@ const Stage3D=(()=>{
   GT.B.sh.rotation.set(-0.35,0,-0.3);GT.B.el.rotation.set(-1.3,0,0.45);
 
   // ---- singer ----
-  const sR=rim(CYAN),SG=figure(sR,true);SG.root.position.set(-0.6,0,1.2);scene.add(SG.root);
+  const sR=rim(CYAN),SG=figure(sR);SG.root.position.set(-0.6,0,1.2);scene.add(SG.root);
   mane(SG.head,sR,'long');jacket(SG.spine,sR,'long');hat(SG.head,sR,'top');
   part(SG.spine,new THREE.CylinderGeometry(0.1,0.1,0.06,12),sR,0,0.58,0.04);
-  SG.legL.rotation.z=-0.1;SG.legR.rotation.z=0.1;
+  SG.legL.rotation.set(0.05,0,-0.1);SG.legR.rotation.set(-0.3,0,0.08);SG.kR.rotation.x=0.3;
   const stand=new THREE.Group();stand.position.set(0.05,0,0.42);SG.root.add(stand);
   lit(stand,new THREE.CylinderGeometry(0.012,0.012,1.58,6),CYAN,0,0.79,0,-0.08);
   const micHead=lit(stand,new THREE.SphereGeometry(0.04,12,10),ACID,0,1.6,-0.1);
@@ -625,8 +635,8 @@ const Stage3D=(()=>{
 
   // ---- bass player ----
   const bR=rim(0xa56bff),BS=figure(bR);BS.root.position.set(1.7,0,0.5);BS.root.rotation.y=-0.3;scene.add(BS.root);
-  mane(BS.head,bR,'afro');hat(BS.head,bR,'fedora');jacket(BS.spine,bR,'');
-  BS.legL.rotation.z=-0.16;BS.legR.rotation.z=0.16;
+  mane(BS.head,bR,'afro');hat(BS.head,bR,'fedora',0.06);jacket(BS.spine,bR,'');
+  BS.legL.rotation.z=-0.2;BS.legR.rotation.z=0.2;
   const bass=new THREE.Group();bass.position.set(0,0.16,0.2);bass.rotation.z=0.3;BS.spine.add(bass);
   part(bass,new THREE.CylinderGeometry(0.23,0.23,0.07,22),bR,-0.02,0,0,Math.PI/2);
   part(bass,new THREE.CylinderGeometry(0.16,0.16,0.07,18),bR,0.22,0.03,0,Math.PI/2);
@@ -640,7 +650,7 @@ const Stage3D=(()=>{
   const dR=rim(ORANGE),cR=rim(ACID);
   part(scene,new THREE.BoxGeometry(3.2,0.4,2.6),dR,3.7,0.2,-1.8);
   const DR=figure(dR);DR.root.position.set(3.7,0.4,-2.35);scene.add(DR.root);DR.hips.position.y=0.6;
-  DR.legL.rotation.set(-1.35,0,-0.2);DR.legR.rotation.set(-1.35,0,0.2);
+  DR.legL.rotation.set(-1.45,0,-0.22);DR.legR.rotation.set(-1.45,0,0.22);DR.kL.rotation.x=1.45;DR.kR.rotation.x=1.45;
   mane(DR.head,dR,'spikes');hat(DR.head,dR,'cap');
   part(DR.root,new THREE.CylinderGeometry(0.18,0.15,0.55,12),null,0,0.28,0);
   const kit=new THREE.Group();kit.position.set(3.7,0.4,-1.75);scene.add(kit);
@@ -662,7 +672,24 @@ const Stage3D=(()=>{
   const haze=glow(UV,12,0.18);haze.position.set(0,0.3,-1);scene.add(haze);
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(40,30),BLACK);floor.rotation.x=-Math.PI/2;scene.add(floor);
   lit(scene,new THREE.BoxGeometry(14,0.025,0.025),MAG,0,0.012,2.3);
-  const leds=[];for(let i=0;i<13;i++){const m=new THREE.Mesh(new THREE.BoxGeometry(0.07,4.2,0.02),addMat(i%2?CYAN:MAG,0.5));m.position.set(-6.6+i*1.1,2.3,-4.6);scene.add(m);leds.push(m)}
+  // LED wall: a small canvas redrawn every frame, bars riding the beat
+  const wallC=document.createElement('canvas');wallC.width=256;wallC.height=64;const wx=wallC.getContext('2d'),wallT=new THREE.CanvasTexture(wallC);
+  const wall=new THREE.Mesh(new THREE.PlaneGeometry(14,4.6),new THREE.MeshBasicMaterial({map:wallT,transparent:true,opacity:0.6,blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));
+  wall.position.set(0,2.5,-4.7);scene.add(wall);
+  const WCOL=['#ff2bd6','#00f0ff','#a56bff','#ff8a00'];
+  function drawWall(t){wx.globalAlpha=1;wx.fillStyle='#000';wx.fillRect(0,0,256,64);const bar=Math.floor(S.beatN/4);
+    for(let i=0;i<32;i++){const h=(0.35+0.65*(0.5+0.5*Math.sin(t*2.1+i*0.5+bar)))*(0.45+0.55*S.pulse)*62;
+      wx.globalAlpha=0.3+0.45*S.pulse;wx.fillStyle=WCOL[(i+bar)%4];wx.fillRect(i*8+1,64-h,6,h)}
+    wx.globalAlpha=0.18;wx.fillStyle='#fff';wx.fillRect(0,(t*36)%64,256,1.5);wallT.needsUpdate=true}
+  // light pooling on the floor under each player
+  const puddles=[[-3.6,0.012,0.4,MAG],[-0.6,0.012,1.3,CYAN],[1.7,0.012,0.6,0xa56bff],[3.7,0.412,-1.5,ORANGE]].map(([x,y,z,c])=>{
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(2.6,1.7),new THREE.MeshBasicMaterial({map:tex,color:c,transparent:true,opacity:0.3,blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));
+    m.rotation.x=-Math.PI/2;m.position.set(x,y,z);scene.add(m);return m});
+  // footlights along the stage edge
+  const foots=[];for(let i=0;i<10;i++){const x=-6+i*1.33,c=[MAG,CYAN,0xa56bff,ORANGE][i%4];
+    lit(scene,new THREE.SphereGeometry(0.055,8,6),c,x,0.06,2.25);const gl=glow(c,0.9,0.4);gl.position.set(x,0.14,2.25);scene.add(gl);foots.push(gl)}
+  // drifting haze
+  const hazes=[[UV,9,0.12],[MAG,7,0.06],[CYAN,7,0.05]].map(([c,sz,op],i)=>{const h=glow(c,sz,op);h.position.set(-3+i*3,0.6+i*0.25,-0.5-i*0.6);scene.add(h);return h});
   part(scene,new THREE.BoxGeometry(14,0.25,0.25),null,0,5.8,-1.5);
   const cone=new THREE.ConeGeometry(1.2,6.5,24,1,true);cone.translate(0,-3.25,0);
   const BC=[MAG,CYAN,ACID,ORANGE],beams=[];
@@ -694,7 +721,9 @@ const Stage3D=(()=>{
     GT.B.el.rotation.x=-1.3+S.strumK*0.45;GT.head.rotation.x=0.15+S.bob*0.3;GT.spine.rotation.x=0.08+S.bob*0.1;
     gR.thin.opacity=0.45+0.55*S.gLight;gR.glow.opacity=0.1+0.3*S.gLight;
     BS.B.el.rotation.x=-1.25+S.strumB*0.4;BS.head.rotation.x=0.12+S.bobB*0.25;BS.spine.rotation.y=Math.sin(t*1.1)*0.06;
-    BS.hips.position.y=0.95+Math.abs(Math.sin(beatPhase()*Math.PI))*0.035;
+    const bb=0.5-0.5*Math.cos(2*Math.PI*beatPhase());BS.hips.position.y=0.96-bb*0.035;
+    BS.legL.rotation.x=BS.legR.rotation.x=-0.1-bb*0.14;BS.kL.rotation.x=BS.kR.rotation.x=0.2+bb*0.3;
+    GT.kL.rotation.x=GT.kR.rotation.x=0.3+bb*0.12;
     bR.thin.opacity=0.45+0.55*S.bLight;bR.glow.opacity=0.1+0.3*S.bLight;
     SG.spine.rotation.x=-0.04-S.vLevel*0.12;SG.B.sh.rotation.set(-0.3-S.vLevel*0.9,0,-0.25-S.vLevel*0.8);SG.B.el.rotation.x=-0.3-S.vLevel*0.6;
     sR.thin.opacity=0.45+0.55*S.vLevel;sR.glow.opacity=0.1+0.3*S.vLevel;micGlow.material.opacity=0.35+0.65*S.vLevel;
@@ -702,8 +731,11 @@ const Stage3D=(()=>{
     DR.head.rotation.x=0.25+S.kick*0.12;ring.scale.setScalar(1+S.kick*0.08);
     dR.thin.opacity=0.4+0.6*S.dLight;dR.glow.opacity=0.1+0.3*S.dLight;cR.thin.opacity=0.3+0.7*S.cym;cR.glow.opacity=0.08+0.35*S.cym;
     [S.gLight,S.vLevel,S.bLight,S.dLight].forEach((k,i)=>{backs[i].material.opacity=0.35+0.55*k;backs[i].scale.setScalar(5.5+2.5*k+S.pulse*0.8)});
-    leds.forEach((m,i)=>{m.material.opacity=0.12+0.35*(0.5+0.5*Math.sin(t*3-i*0.7))+S.pulse*0.35});
-    beams.forEach((pv,i)=>{pv.rotation.z=Math.sin(t*0.5+i*1.3)*0.45;pv.rotation.x=0.35+Math.sin(t*0.37+i)*0.15;pv.children[0].material.opacity=0.03+0.05*S.pulse});
+    drawWall(t);
+    [S.gLight,S.vLevel,S.bLight,S.dLight].forEach((k,i)=>{puddles[i].material.opacity=0.12+0.4*k+0.08*S.pulse});
+    foots.forEach((f,i)=>{f.material.opacity=0.15+0.55*S.pulse*((i+S.beatN)%2)});
+    hazes.forEach((h,i)=>{h.position.x=-3+i*3+Math.sin(t*0.07+i*2)*1.8});
+    beams.forEach((pv,i)=>{pv.rotation.z=Math.sin(t*0.5+i*1.3)*0.45;pv.rotation.x=0.35+Math.sin(t*0.37+i)*0.15;const m=pv.children[0].material;m.opacity=0.03+0.06*S.pulse;m.color.setHex(BC[(i+Math.floor(S.beatN/4))%4])});
     crowd(t,dt);
   }
 
@@ -1311,13 +1343,15 @@ async function loadBoard(){
 function renderMine(){const b=store.get('best',{})[boardSel.sid+'|'+boardSel.part+'|'+boardSel.diff];$('#bMine').textContent=b?`Your best on this device: ${b.score.toLocaleString()} (${b.acc}%)`:''}
 
 // ---------- stage (silhouette video) ----------
-const S={beatN:0,dDen:0,gDen:0,bDen:0,vAct:0,beatAt:0,beatGap:0.5,pulse:0,kick:0,strumB:0,bobB:0,bLight:0,arm:[0,0],armI:0,cym:0,strumK:0,gLight:0,dLight:0,vLevel:0,bob:0,
-  drum(l,auto){S.dDen+=1;S.dLight=Math.min(1,S.dLight+(auto?0.35:0.6));if(l===0)S.kick=1;else{S.arm[S.armI]=1;S.armI^=1;if(l>=2)S.cym=1}},
+const REDUCE_MOTION=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const S={flash:0,lastFlash:0,beatN:0,dDen:0,gDen:0,bDen:0,vAct:0,beatAt:0,beatGap:0.5,pulse:0,kick:0,strumB:0,bobB:0,bLight:0,arm:[0,0],armI:0,cym:0,strumK:0,gLight:0,dLight:0,vLevel:0,bob:0,
+  drum(l,auto){if(l===4&&!REDUCE_MOTION){const n=performance.now();if(n-S.lastFlash>450){S.flash=1;S.lastFlash=n}} // crash = soft stage flash, at most ~2 a second
+    S.dDen+=1;S.dLight=Math.min(1,S.dLight+(auto?0.35:0.6));if(l===0)S.kick=1;else{S.arm[S.armI]=1;S.armI^=1;if(l>=2)S.cym=1}},
   strum(auto,role){if(role==='bass'){S.bDen+=1;S.strumB=1;S.bobB=1;S.bLight=Math.min(1,S.bLight+(auto?0.3:0.55));return}
     S.gDen+=1;S.strumK=1;S.gLight=Math.min(1,S.gLight+(auto?0.3:0.55));S.bob=1},
   beat(){S.pulse=1;S.beatN++;const now=performance.now()/1000;const gap=now-S.beatAt;
     if(gap>0.2&&gap<2)S.beatGap=S.beatGap*0.7+gap*0.3;S.beatAt=now}};
-function decayStage(dt){S.dDen*=Math.pow(0.5,dt*2);S.gDen*=Math.pow(0.5,dt*2);S.bDen*=Math.pow(0.5,dt*2);S.strumB*=Math.pow(0.004,dt);S.bobB*=Math.pow(0.02,dt);S.bLight*=Math.pow(0.08,dt);const k=Math.pow(0.004,dt);S.pulse*=Math.pow(0.02,dt);S.kick*=k;S.arm[0]*=k;S.arm[1]*=k;S.cym*=Math.pow(0.05,dt);S.strumK*=k;S.gLight*=Math.pow(0.08,dt);S.dLight*=Math.pow(0.08,dt);S.bob*=Math.pow(0.02,dt)}
+function decayStage(dt){S.flash*=Math.pow(0.0005,dt);S.dDen*=Math.pow(0.5,dt*2);S.gDen*=Math.pow(0.5,dt*2);S.bDen*=Math.pow(0.5,dt*2);S.strumB*=Math.pow(0.004,dt);S.bobB*=Math.pow(0.02,dt);S.bLight*=Math.pow(0.08,dt);const k=Math.pow(0.004,dt);S.pulse*=Math.pow(0.02,dt);S.kick*=k;S.arm[0]*=k;S.arm[1]*=k;S.cym*=Math.pow(0.05,dt);S.strumK*=k;S.gLight*=Math.pow(0.08,dt);S.dLight*=Math.pow(0.08,dt);S.bob*=Math.pow(0.02,dt)}
 function limb(p,x1,y1,x2,y2,w){const dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy)||1,nx=-dy/L*w/2,ny=dx/L*w/2;p.moveTo(x1-nx,y1-ny);p.lineTo(x2-nx,y2-ny);p.lineTo(x2+nx,y2+ny);p.lineTo(x1+nx,y1+ny);p.closePath();p.moveTo(x2+w/2,y2);p.arc(x2,y2,w/2,0,Math.PI*2)}
 function sil(p,c,k){g.save();g.globalCompositeOperation='lighter';g.lineJoin='round';g.strokeStyle=hexA(c,0.18+0.55*k);g.lineWidth=2.4;g.stroke(p);g.strokeStyle=hexA(c,0.5+0.5*k);g.lineWidth=0.7;g.stroke(p);g.restore();g.fillStyle='#000';g.fill(p)}
 function neon(c,a,w,fn){g.save();g.globalCompositeOperation='lighter';g.strokeStyle=hexA(c,a*0.35);g.lineWidth=w*3;g.lineCap='round';g.beginPath();fn();g.stroke();g.strokeStyle=hexA(c,a);g.lineWidth=w;g.beginPath();fn();g.stroke();g.restore()}
@@ -1456,7 +1490,8 @@ function frame(nowMs){
     decayStage(dt);
     const hasV=!!G.P.vocals,stageH=H*(hasV?0.34:0.42),vH=hasV?Math.max(96,H*0.14):0;
     if(Stage3D){g.clearRect(0,0,W,H);Stage3D.info={game:true,vocal:!!S.vAct};Stage3D.render(dt,t,stageH)}else drawStage(0,0,W,stageH,t);
-    const hy=stageH+vH,hh=H-hy;g.fillStyle='#000';g.fillRect(0,stageH,W,H-stageH);
+    const hy=stageH+vH,hh=H-hy;if(S.flash>0.02){g.fillStyle=`rgba(255,255,255,${(S.flash*0.16).toFixed(3)})`;g.fillRect(0,0,W,stageH)}
+    g.fillStyle='#000';g.fillRect(0,stageH,W,H-stageH);
     if(hasV)drawVocals(G.P.vocals,{x:0,y:stageH,w:W,h:vH},drawT);
     const hw=[G.P.guitar,G.P.bass,G.P.drums].filter(Boolean);
     if(hw.length===1){const w=Math.min(W,hh*1.4);drawHighway(hw[0],{x:(W-w)/2,y:hy,w,h:hh},drawT)}
