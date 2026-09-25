@@ -182,7 +182,8 @@ a.btn{text-decoration:none}
   <label>Sound delay <b id="audVal"></b> ms<br><input type="range" id="audCal" min="-100" max="400" step="1" style="width:100%"></label>
   <canvas id="calCanvas"></canvas>
   <label>Screen delay <b id="vidVal"></b> ms<br><input type="range" id="vidCal" min="-150" max="300" step="1" style="width:100%"></label>
-  <p>Using a TV? Switch it to game mode first. It can cut 50–100 ms of lag.</p>
+  <label>Screen delay in VR <b id="vrVal"></b> ms<br><input type="range" id="vrCal" min="-150" max="300" step="1" style="width:100%"></label>
+  <p>Using a TV? Switch it to game mode first. It can cut 50–100 ms of lag. The headset has its own screen delay: if notes look early or late in VR, adjust that slider.</p>
   <button class="btn" data-go="title">Done</button>
  </div>
 </section>
@@ -265,7 +266,7 @@ a.btn{text-decoration:none}
    <div class="tabs" id="bnParts" role="group" aria-label="Your instrument"></div>
    <div id="bnList" class="board"></div>
    <div class="rv" id="bnSongRow" hidden><select id="bnSong" aria-label="Song"></select><button class="btn small" id="bnPick">Use this song</button></div>
-   <div class="rv"><button class="btn small" id="bnReady">I'm ready</button><button class="btn small" id="bnStart" hidden>Start the song</button><button class="btn small" id="bnLeave">Leave room</button></div>
+   <div class="rv"><button class="btn small" id="bnReady">I'm ready</button><button class="btn small" id="bnStart" hidden>Start the song</button><button class="btn small vrOnly" id="bnVR" hidden>Enter VR</button><button class="btn small" id="bnLeave">Leave room</button></div>
   </div>
   <div id="bnMsg" class="status" aria-live="polite"></div>
   <button class="btn" data-go="title">Back</button>
@@ -758,7 +759,29 @@ const Stage3D=(()=>{
   function cut(to){cur=to||pick();shotT=0;beatsIn=0;len=api.info.game?(S.dDen>9?4:(Math.random()<0.3?16:8)):6}
   api.reset=to=>{cut(to);lastBeat=S.beatN};
   let lw=0,lh=0;
+  // ---- WebXR: stand on the stage as one of the band ----
+  const xrRig=new THREE.Group(),xrCam=new THREE.PerspectiveCamera(70,1,0.05,100);xrRig.add(xrCam);scene.add(xrRig);
+  // where you stand for each instrument (the stage-left figure you replace is hidden so you are not inside it)
+  const SPOTS={guitar:[GT.root.position,GT.root],bass:[BS.root.position,BS.root],vocals:[SG.root.position,SG.root],drums:[DR.root.position,DR.root],watch:[new THREE.Vector3(0,0,6.5),null]};
+  let panelMesh=null,panelTex=null,panelW=0,panelH=0,hiddenFig=null;
+  api.xrPanel=canvas=>{
+    if(!panelMesh||panelW!==canvas.width||panelH!==canvas.height){
+      if(panelMesh){xrRig.remove(panelMesh);panelMesh.geometry.dispose();panelMesh.material.dispose();panelTex.dispose()}
+      panelW=canvas.width;panelH=canvas.height;
+      panelTex=new THREE.CanvasTexture(canvas);panelTex.minFilter=THREE.LinearFilter;panelTex.generateMipmaps=false;
+      const w=1.7,h=w*panelH/panelW;
+      panelMesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:panelTex,transparent:true,depthWrite:false,fog:false}));
+      panelMesh.position.set(0,1.02,-1.15);panelMesh.rotation.x=-0.28;panelMesh.renderOrder=10;xrRig.add(panelMesh)}
+    panelTex.needsUpdate=true};
+  api.xrSetRole=role=>{const sp=SPOTS[role]||SPOTS.watch;
+    if(hiddenFig)hiddenFig.visible=true;hiddenFig=sp[1];if(hiddenFig)hiddenFig.visible=false;
+    xrRig.position.copy(sp[0]);xrRig.rotation.set(0,Math.PI,0)};   // face the crowd
+  api.xrStart=async(session,role)=>{R.xr.enabled=true;R.xr.setReferenceSpaceType('local-floor');await R.xr.setSession(session);R.autoClear=true;api.xrSetRole(role)};
+  api.xrEnd=()=>{if(hiddenFig)hiddenFig.visible=true;hiddenFig=null;R.setAnimationLoop(null);R.xr.enabled=false;R.autoClear=false;lw=0;lh=0};
+  api.xrLoop=fn=>R.setAnimationLoop(fn);
+  api.xrRender=(dt,t)=>{animate(t,dt);R.render(scene,xrCam)};
   api.render=(dt,t,band)=>{
+    if(R.xr.isPresenting)return;
     const W=innerWidth,H=innerHeight;if(W!==lw||H!==lh){R.setSize(W,H,false);lw=W;lh=H}
     if(S.beatN!==lastBeat){beatsIn+=S.beatN-lastBeat;lastBeat=S.beatN;if(beatsIn>=len)cut()}
     animate(t,dt);shotT+=dt;
@@ -787,7 +810,7 @@ const KEYS={guitar:{g:'KeyA',r:'KeyS',y:'KeyD',b:'KeyF',o:'KeyG',down:'ArrowDown
 const keyLookup={};for(const r in KEYS)for(const n in KEYS[r])keyLookup[KEYS[r][n]]=[r,n];
 
 const store={get(k,d){try{const v=localStorage.getItem('backlit.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('backlit.'+k,JSON.stringify(v))}catch(e){}}};
-const settings=Object.assign({audioCal:0,videoCal:0,guide:0.6,aec:true,micId:'',monitor:0,reverb:0.3},store.get('settings',{}));
+const settings=Object.assign({vrVideoCal:0,audioCal:0,videoCal:0,guide:0.6,aec:true,micId:'',monitor:0,reverb:0.3},store.get('settings',{}));
 const saveSettings=()=>store.set('settings',settings);
 const inputs={guitar:store.get('in.guitar',{src:'keys'}),bass:store.get('in.bass',{src:'keys'}),drums:store.get('in.drums',{src:'keys'})};
 
@@ -803,7 +826,7 @@ function go(n){screen=n;$$('.screen').forEach(s=>s.classList.toggle('on',s.id===
 $$('[data-go]').forEach(b=>b.addEventListener('click',()=>{audio();go(b.dataset.go)}));
 
 // ---------- canvas ----------
-const cv=$('#cv'),g=cv.getContext('2d');let W=0,H=0,DPR=1;
+const cv=$('#cv');let g=cv.getContext('2d');let W=0,H=0,DPR=1;
 function resize(){DPR=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;g.setTransform(DPR,0,0,DPR,0,0)}
 addEventListener('resize',resize);resize();
 
@@ -824,6 +847,7 @@ setInterval(pollPads,4);
 function press(role,name){
   if(calib.active){calib.tap();return}
   if(G&&G.running&&!G.paused)gameInput(role,name);
+  else if(xr.active)xrAction();
 }
 addEventListener('keydown',e=>{
   if(e.code==='Escape'){if(mapping){mapping.cancel();return}if(G&&G.running){G.paused?resume():pause()}return}
@@ -954,10 +978,12 @@ $('#micSel').onchange=async e=>{settings.micId=e.target.value;saveSettings();try
 const calib={active:false,clicks:[],taps:[],prevRun:0};
 function click(c,t,f=1400,v=0.5){const o=c.createOscillator(),gn=c.createGain();o.frequency.value=f;gn.gain.setValueAtTime(v,t);gn.gain.exponentialRampToValueAtTime(0.001,t+0.06);o.connect(gn).connect(c.destination);o.start(t);o.stop(t+0.07)}
 function openCalib(){
+  $('#vrCal').value=settings.vrVideoCal;$('#vrVal').textContent=settings.vrVideoCal;
   $('#audCal').value=settings.audioCal;$('#vidCal').value=settings.videoCal;$('#audVal').textContent=settings.audioCal;$('#vidVal').textContent=settings.videoCal;
   const c=audio();calib.prevT0=c.currentTime+0.3;calib.prevNext=0;
 }
 $('#audCal').oninput=e=>{settings.audioCal=+e.target.value;$('#audVal').textContent=e.target.value;saveSettings()};
+$('#vrCal').oninput=e=>{settings.vrVideoCal=+e.target.value;$('#vrVal').textContent=e.target.value;saveSettings()};
 $('#vidCal').oninput=e=>{settings.videoCal=+e.target.value;$('#vidVal').textContent=e.target.value;saveSettings()};
 $('#calStart').onclick=()=>{const c=audio();const t0=c.currentTime+1;calib.clicks=[];calib.taps=[];
   for(let i=0;i<20;i++){const t=t0+i*0.5;calib.clicks.push(t);click(c,t,i%4?1000:1600)}
@@ -1120,7 +1146,7 @@ async function selectSong(s){
     <label class="chk"><input type="checkbox" id="aec" ${settings.aec?'checked':''}> Filter out speaker sound</label>
     <p class="note" id="monNote"></p>`;
   if(!has('guitar')&&!has('bass')&&!has('drums')&&!has('vocals'))h+='<p>No playable parts found in this chart.</p>';
-  else h+='<br><button class="btn big" id="playBtn">Play</button>';
+  else h+='<br><button class="btn big" id="playBtn">Play</button>'+(xr.supported?' &nbsp; <button class="btn big" id="vrPlayBtn">Play in VR</button>':'');
   D.innerHTML=h;D.querySelector('h3').textContent=s.title;D.querySelector('.artist').textContent=s.artist;
   const bind=(id,fn)=>{const el=$(id);if(el)el.onchange=e=>{fn(e.target);store.set('cfg',cfgMem)}};
   bind('#onG',t=>cfgMem.guitar.on=t.checked);bind('#diffG',t=>cfgMem.guitar.diff=t.value);
@@ -1134,6 +1160,8 @@ async function selectSong(s){
   const rv=$('#reverb');if(rv)rv.oninput=e=>{settings.reverb=+e.target.value;saveSettings();applyMonitor();renderMicRow()};
   const ae=$('#aec');if(ae)ae.onchange=async e=>{settings.aec=e.target.checked;saveSettings();renderMicRow();if(mic.on)try{await startMic()}catch(err){}};
   const pb=$('#playBtn');if(pb)pb.onclick=()=>startGame(s);
+  const vb=$('#vrPlayBtn');if(vb)vb.onclick=async()=>{const first=['guitar','bass','drums','vocals'].find(r=>P[r]&&cfgMem[r]&&cfgMem[r].on)||'watch';
+    if(await enterVR(first))startGame(s)};
   if(s.demo)loadStems(s);
 }
 
@@ -1212,7 +1240,7 @@ async function startGame(s,opt={}){
   const top=byD=>byD?byD[DIFFS.slice().reverse().find(x=>byD[x])]:[];
   const auto={drums:top(s.parts.drums),guitar:top(s.parts.guitar||s.parts.bass),bass:top(s.parts.bass||s.parts.guitar),di:0,gi:0,bi2:0};
   G={song:s,P,t0,end:Math.max(dur,s.length)+0.5,gains,srcs,master,running:true,paused:false,auto,beats:s.beats||[],bi:0,band:0,online:!!opt.at,lastPush:0};
-  S.pulse=0;if(Stage3D)Stage3D.reset('crowd');$('#pauseBtn').hidden=false;go('none');
+  S.pulse=0;if(Stage3D)Stage3D.reset('crowd');if(xr.active)Stage3D.xrSetRole(roleFor(P));$('#pauseBtn').hidden=false;go('none');
 }
 function stopGame(){$('#pauseBtn').hidden=true;if(!G)return;for(const s of G.srcs)try{s.stop()}catch(e){}try{G.master.disconnect()}catch(e){}G.running=false}
 function pause(){if(!G||G.paused)return;G.paused=true;$('#pauseBtn').hidden=true;ctx.suspend();go('pause')}
@@ -1222,7 +1250,7 @@ $('#resumeBtn').onclick=resume;
 $('#restartBtn').onclick=()=>{const s=G.song;stopGame();G=null;ctx.resume().then(()=>startGame(s))};
 $('#quitBtn').onclick=()=>{stopGame();G=null;ctx.resume();go('songs')};
 $('#againBtn').onclick=()=>{const s=lastSong;if(s)startGame(s)};
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&G&&G.running)pause()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&G&&G.running&&!xr.active)pause()});
 let lastSong=null;
 
 const judgeNow=()=>ctx.currentTime-G.t0-settings.audioCal/1000;
@@ -1482,20 +1510,30 @@ function drawVocals(V,R,drawT){
 
 // ---------- main loop ----------
 let lastF=performance.now(),idleBeat=0;
+function idleTick(dt,t){
+  idleBeat+=dt;if(idleBeat>0.6){idleBeat=0;S.beat();S.drum(Math.random()<0.5?0:1+((Math.random()*4)|0),true);if(Math.random()<0.6)S.strum(true,'guitar');if(Math.random()<0.5)S.strum(true,'bass')}
+  S.vLevel=0.35+0.25*Math.sin(t*1.7);
+}
+// vocal strip + note tracks, used by the screen and by the VR panel
+function drawPlayfield(x0,y0,w,h,drawT,vH){
+  const hw=[G.P.guitar,G.P.bass,G.P.drums].filter(Boolean);
+  if(G.P.vocals)drawVocals(G.P.vocals,{x:x0,y:y0,w,h:vH},drawT);
+  const hy=y0+vH,hh=h-vH;if(!hw.length)return;
+  if(hw.length===1){const ww=Math.min(w,hh*1.4);drawHighway(hw[0],{x:x0+(w-ww)/2,y:hy,w:ww,h:hh},drawT)}
+  else hw.forEach((P,i)=>drawHighway(P,{x:x0+i*w/hw.length,y:hy,w:w/hw.length,h:hh},drawT));
+}
 function frame(nowMs){
   const dt=Math.min(0.05,(nowMs-lastF)/1000);lastF=nowMs;const t=nowMs/1000;
+  if(xr.active)return xrFrame(dt,t);
   if(G&&G.running&&!G.paused){
-    updateGame(dt);if(!G)return requestAnimationFrame(frame);
+    updateGame(dt);if(!G)return;
     const now=ctx.currentTime-G.t0,drawT=now-settings.audioCal/1000+settings.videoCal/1000;
     decayStage(dt);
     const hasV=!!G.P.vocals,stageH=H*(hasV?0.34:0.42),vH=hasV?Math.max(96,H*0.14):0;
     if(Stage3D){g.clearRect(0,0,W,H);Stage3D.info={game:true,vocal:!!S.vAct};Stage3D.render(dt,t,stageH)}else drawStage(0,0,W,stageH,t);
-    const hy=stageH+vH,hh=H-hy;if(S.flash>0.02){g.fillStyle=`rgba(255,255,255,${(S.flash*0.16).toFixed(3)})`;g.fillRect(0,0,W,stageH)}
+    if(S.flash>0.02){g.fillStyle=`rgba(255,255,255,${(S.flash*0.16).toFixed(3)})`;g.fillRect(0,0,W,stageH)}
     g.fillStyle='#000';g.fillRect(0,stageH,W,H-stageH);
-    if(hasV)drawVocals(G.P.vocals,{x:0,y:stageH,w:W,h:vH},drawT);
-    const hw=[G.P.guitar,G.P.bass,G.P.drums].filter(Boolean);
-    if(hw.length===1){const w=Math.min(W,hh*1.4);drawHighway(hw[0],{x:(W-w)/2,y:hy,w,h:hh},drawT)}
-    else hw.forEach((P,i)=>drawHighway(P,{x:i*W/hw.length,y:hy,w:W/hw.length,h:hh},drawT));
+    drawPlayfield(0,stageH,W,H-stageH,drawT,vH);
     // band HUD
     let band=0;for(const k in G.P)band+=G.P[k].score;
     g.textAlign='right';g.fillStyle='#fff';g.font=font(Math.round(stageH*0.13));g.fillText(band.toLocaleString(),W-18,stageH*0.16);g.textAlign='center';
@@ -1507,17 +1545,93 @@ function frame(nowMs){
     if(now<4){g.font=font(Math.round(stageH*0.09),700);g.fillStyle='rgba(255,255,255,.85)';g.fillText(G.song.title+(G.song.artist&&!G.song.demo?' — '+G.song.artist:''),W/2,stageH*0.28)}
     g.textAlign='left';
   }else if(!G||!G.running){
-    // menu backdrop: idle band
-    idleBeat+=dt;if(idleBeat>0.6){idleBeat=0;S.beat();S.drum(Math.random()<0.5?0:1+((Math.random()*4)|0),true);if(Math.random()<0.6)S.strum(true,'guitar');if(Math.random()<0.5)S.strum(true,'bass')}
-    S.vLevel=0.35+0.25*Math.sin(t*1.7);decayStage(dt);
+    idleTick(dt,t);decayStage(dt);
     if(Stage3D){g.clearRect(0,0,W,H);Stage3D.info={game:false,vocal:false};Stage3D.render(dt,t,0);g.fillStyle='rgba(0,0,0,.28)';g.fillRect(0,0,W,H)}
     else{g.fillStyle='#000';g.fillRect(0,0,W,H);drawStage(0,H*0.35,W,H*0.65,t);g.fillStyle='rgba(0,0,0,.35)';g.fillRect(0,0,W,H)}
     if(screen==='setup')updateSetupLive();if(screen==='calib')drawCalib();
     if(screen==='title'){const n=(navigator.getGamepads?[...navigator.getGamepads()]:[]).filter(Boolean).length;$('#padHint').textContent=n?`${n} controller${n>1?'s':''} detected.`:'No controllers detected yet. Plug in a dongle and press a button.'}
   }
-  requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+// the window drives frames normally; the headset drives them while in VR (browsers pause the window's clock then)
+function winLoop(ms){if(xr.active)return;frame(ms);requestAnimationFrame(winLoop)}
+requestAnimationFrame(winLoop);
+
+// ---------- WebXR: play from the stage ----------
+const xr={active:false,session:null,role:null,supported:false,canvas:document.createElement('canvas'),trig:{},lastAction:0};
+xr.ctx=xr.canvas.getContext('2d');
+(async()=>{if(Stage3D&&navigator.xr&&navigator.xr.isSessionSupported)try{xr.supported=await navigator.xr.isSessionSupported('immersive-vr')}catch(e){}
+  $$('.vrOnly').forEach(el=>el.hidden=!xr.supported);if(selSong&&screen==='songs')selectSong(selSong)})();
+function roleFor(P){if(net.part&&G&&G.online)return net.part;for(const r of ['guitar','bass','drums','vocals'])if(P&&P[r])return r;return 'watch'}
+async function enterVR(role){
+  if(xr.active){Stage3D.xrSetRole(role);xr.role=role;return true}
+  if(!xr.supported){toast('VR is not available in this browser.');return false}
+  audio();   // unlock sound while we still have the tap
+  let session;try{session=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor']})}catch(e){toast('Could not start VR: '+e.message);return false}
+  try{await Stage3D.xrStart(session,role)}catch(e){toast('VR failed: '+e.message);session.end().catch(()=>{});return false}
+  xr.active=true;xr.session=session;xr.role=role;
+  session.addEventListener('end',()=>{xr.active=false;xr.session=null;Stage3D.xrEnd();if(G&&G.running&&!G.paused)pause();lastF=performance.now();requestAnimationFrame(winLoop)});
+  Stage3D.xrLoop(()=>frame(performance.now()));
+  return true;
+}
+// one "do the obvious thing" action from a fret, pad, strum, or a Quest controller trigger
+function xrAction(){
+  const n=performance.now();if(n-xr.lastAction<600)return;xr.lastAction=n;
+  if(G&&G.running)return;
+  if(netIn()){const st=net.state;if(!st)return;const band=st.players.filter(p=>p.part);
+    if(net.host&&net.ready&&st.song&&band.length&&band.every(p=>p.ready&&p.hasSong)){netSend({t:'start'});return}
+    if(net.part&&net.matched){net.ready=!net.ready;netSend({t:'ready',ok:net.ready});renderBand()}
+    return}
+  if(lastSong&&screen==='results')startGame(lastSong);
+}
+function xrControllers(){ // Quest controller triggers: read from our own session, never let a bad frame stop the game
+  try{const list=xr.session&&xr.session.inputSources;if(!list)return;
+    for(let i=0;i<list.length;i++){const src=list[i],gp=src&&src.gamepad;if(!gp)continue;const k=src.handedness||('c'+i);
+      const on=!!(gp.buttons[0]&&gp.buttons[0].pressed);if(on&&!xr.trig[k])xrAction();xr.trig[k]=on}}catch(e){}}
+function xrFrame(dt,t){
+  pollPads();xrControllers();
+  let drawT=0,now=0;
+  if(G&&G.running&&!G.paused){updateGame(dt);if(G){now=ctx.currentTime-G.t0;drawT=now-settings.audioCal/1000+settings.vrVideoCal/1000}}
+  else if(!G||!G.running)idleTick(dt,t);
+  decayStage(dt);
+  Stage3D.info={game:!!(G&&G.running),vocal:!!S.vAct};
+  drawXRPanel(drawT,now);
+  Stage3D.xrRender(dt,t);
+}
+function drawXRPanel(drawT,now){
+  const c=xr.canvas,x=xr.ctx,playing=!!(G&&G.running);
+  let cw=1100,ch=520;
+  if(playing){const n=[G.P.guitar,G.P.bass,G.P.drums].filter(Boolean).length;cw=Math.max(760,Math.min(1440,n*460));ch=n?(G.P.vocals?700:580):260}
+  if(c.width!==cw||c.height!==ch){c.width=cw;c.height=ch}
+  x.clearRect(0,0,cw,ch);
+  const saved=g;g=x;
+  try{
+    if(playing){
+      const n=[G.P.guitar,G.P.bass,G.P.drums].filter(Boolean).length,vH=G.P.vocals?(n?Math.round(ch*0.24):ch):0;
+      drawPlayfield(0,0,cw,ch,drawT,vH);
+      let band=0;for(const k in G.P)band+=G.P[k].score;
+      g.textAlign='right';g.fillStyle='#fff';g.font=font(40);g.fillText(band.toLocaleString(),cw-14,vH+44);
+      if(G.online&&net.state){let y=vH+80;g.font=font(24,700);for(const q of net.state.players){if(q.id===net.me||!q.part)continue;g.fillStyle='#00f0ff';g.fillText(`${q.name} · ${q.score.toLocaleString()}`,cw-14,y);y+=28}}
+      g.fillStyle=hexA('#ff2bd6',0.9);g.fillRect(0,0,cw*Math.max(0,Math.min(1,now/G.end)),5);
+      if(now<0){g.textAlign='center';g.font=font(Math.round(ch*0.45));g.fillStyle='#eaff00';g.fillText(Math.ceil(-now),cw/2,ch*0.62)}
+      g.textAlign='left';
+    }else xrMessage(cw,ch);
+  }finally{g=saved}
+  Stage3D.xrPanel(c);
+}
+function xrMessage(cw,ch){
+  const lines=[];let title='BACKLIT';
+  if(netIn()&&net.state){const st=net.state;title='Room '+net.code;
+    lines.push(st.song?`Song: ${st.song.title}`:'Waiting for the host to pick a song');
+    for(const p of st.players)lines.push(`${p.name}${p.id===st.host?' (host)':''} · ${p.part?PART_NAME[p.part]:'watching'} · ${p.result?p.result.score.toLocaleString():p.ready?'ready':p.hasSong?'not ready':'no song'}`);
+    lines.push('');lines.push(net.host?'Press a fret, pad or trigger to get ready, then again to start':'Press a fret, pad or trigger to get ready');
+  }else if(screen==='results'&&lastResult){title=$('#resTitle').textContent;
+    for(const e of lastResult.entries)lines.push(`${PART_NAME[e.part]} · ${e.diff} · ${e.acc}% · ${e.score.toLocaleString()}`);
+    lines.push('');lines.push('Press a fret, pad or trigger to play again');lines.push('Press the Meta button to leave VR');
+  }else{lines.push('Loading the song…')}
+  g.fillStyle='rgba(0,0,0,.8)';g.fillRect(0,0,cw,ch);g.strokeStyle='#ff2bd6';g.lineWidth=4;g.strokeRect(2,2,cw-4,ch-4);
+  g.textAlign='left';g.fillStyle='#fff';g.font=font(58);g.fillText(title,34,74);
+  g.font='600 30px Barlow,"Segoe UI",sans-serif';lines.slice(0,11).forEach((l,i)=>{g.fillStyle=l.startsWith('Press')?'#eaff00':'rgba(255,255,255,.88)';g.fillText(l,34,128+i*38)});
+}
 
 // ---------- install as web app ----------
 let deferredPrompt=null;
@@ -1622,6 +1736,7 @@ $('#bnPick').onclick=netPickSong;
 $('#bnReady').onclick=()=>{net.ready=!net.ready;netSend({t:'ready',ok:net.ready});renderBand()};
 $('#bnLeave').onclick=()=>netLeave();
 $('#bnStart').onclick=()=>netSend({t:'start'});
+$('#bnVR').onclick=()=>enterVR(net.part||'watch');
 
 // ---------- family song server (sign-in + R2 downloads, cached in the browser) ----------
 const fam={name:null};
