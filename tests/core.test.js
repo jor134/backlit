@@ -38,4 +38,10 @@ for(const k of ['easy','medium','hard','expert'])console.log(' demo',k,'drums',d
 ok(d.parts.vocals.notes.length>50&&d.length>60&&d.length<120,'demo len '+d.length.toFixed(1)+'s vocals '+d.parts.vocals.notes.length);
 ok(d.parts.guitar.expert.every(n=>n.lanes.every(l=>l>=0&&l<=4)),'guitar lanes valid');
 const lanesOk=d.parts.drums.easy.length<d.parts.drums.medium.length&&d.parts.drums.medium.length<d.parts.drums.expert.length;ok(lanesOk,'difficulty scaling');
+// keys part: Clone Hero .chart [ExpertKeyboard] and Rock Band MIDI "PART KEYS"
+{const k=C.parseChart('[Song]\n{\n  Resolution = 192\n}\n[SyncTrack]\n{\n  0 = B 120000\n}\n[ExpertKeyboard]\n{\n  192 = N 0 0\n  192 = N 2 0\n  384 = N 4 96\n}\n');
+ ok(k.parts.keys&&k.parts.keys.expert.length===2&&k.parts.keys.expert[0].lanes.join()==='0,2','chart keyboard part');
+ const kt=trk([[0,name('PART KEYS')],[480,[0x90,97,100]],[120,[0x80,97,0]]]);
+ const km=C.chartFromMidi(C.parseMidi(new Uint8Array([...Buffer.from('MThd'),0,0,0,6,0,1,0,2,0x01,0xE0,...t0,...kt]).buffer));
+ ok(km.parts.keys&&km.parts.keys.expert[0].lanes[0]===1,'midi PART KEYS');}
 console.log(fails?fails+' FAILED':'ALL PASS');
