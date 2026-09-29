@@ -3,7 +3,7 @@
 // GET  /api/scores?list=songs                       -> songs that have scores
 // GET  /api/scores?song=ID&part=drums&diff=expert   -> top 10
 // POST /api/scores {song:{id,title,artist},name,entries:[{part,diff,score,hits,total,streak}]} -> ranks
-const PARTS = new Set(['guitar', 'bass', 'drums', 'vocals']);
+const PARTS = new Set(['guitar', 'bass', 'keys', 'drums', 'vocals']);
 const DIFFS = new Set(['easy', 'medium', 'hard', 'expert']);
 const KEEP = 100, SHOW = 10, POSTS_PER_HOUR = 30;
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
