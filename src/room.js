@@ -2,7 +2,7 @@
 // Players are in different houses, each on their own copy of the song, so the room only carries
 // who is in the band, which song, a shared start time, and live scores.
 const MAX_PLAYERS = 6;
-const PARTS = ['guitar', 'bass', 'drums', 'vocals'];
+const PARTS = ['guitar', 'bass', 'keys', 'drums', 'vocals'];
 const LEAD_MS = 6000; // countdown before a song starts
 
 export class Room {
