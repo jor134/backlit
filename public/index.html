@@ -186,7 +186,7 @@ a.btn{text-decoration:none}
   <p>Step 1: press Start and hit any pad, fret-and-strum, or the space bar on every click. Step 2: drag the screen delay until the gem lands on the line exactly when you hear the click.</p>
   <button class="btn" id="calStart">Start tapping test</button>
   <div class="status" id="calMsg"></div>
-  <label>Sound delay <b id="audVal"></b> ms<br><input type="range" id="audCal" min="-100" max="400" step="1" style="width:100%"></label>
+  <label>Sound delay <b id="audVal"></b> ms<br><input type="range" id="audCal" min="-100" max="3500" step="1" style="width:100%"></label>
   <canvas id="calCanvas"></canvas>
   <label>Screen delay <b id="vidVal"></b> ms<br><input type="range" id="vidCal" min="-150" max="300" step="1" style="width:100%"></label>
   <label>Screen delay in VR <b id="vrVal"></b> ms<br><input type="range" id="vrCal" min="-150" max="300" step="1" style="width:100%"></label>
@@ -200,6 +200,7 @@ a.btn{text-decoration:none}
   <h2>Songs</h2>
   <p>Clone Hero format songs: .zip downloads, song folders, or files from iCloud and Google Drive.</p>
   <div class="songbar">
+   <button class="btn small airplayBtn" hidden>AirPlay</button>
    <button class="btn small" id="famBtn" aria-expanded="false">Account sign in</button>
    <a class="btn small" href="https://www.enchor.us/" target="_blank" rel="noopener">Chorus Encore</a>
   </div>
@@ -231,6 +232,7 @@ a.btn{text-decoration:none}
   <h2>Paused</h2>
   <nav class="menu">
    <button class="btn" id="resumeBtn">Resume</button>
+   <button class="btn airplayBtn" hidden>AirPlay to a speaker or TV</button>
    <button class="btn" id="restartBtn">Restart song</button>
    <button class="btn" id="quitBtn">Quit to songs</button>
   </nav>
@@ -536,7 +538,17 @@ async function readZip(blob){
   }
   return out;
 }
-if(typeof module!=='undefined')module.exports={parseMidi,tempoMap,chartFromMidi,parseChart,parseIni,detectPitch,pitchDiff,resolveBinds,makeDemoChart,median,midiOf,lastTime,readZip};
+// Find the sound delay from a tap test. Clicks are spaced unevenly on purpose, so only the true delay
+// lines most taps up with clicks, even when the delay (AirPlay, Bluetooth) is longer than the gap between clicks.
+function estimateDelay(clicks,taps,maxDelay=3.5){
+  let best={d:0,n:0,err:1e9};
+  for(let d=-0.15;d<=maxDelay;d+=0.005){let n=0,err=0;
+    for(const tp of taps){let m=1e9;for(const c of clicks){const r=Math.abs(tp-(c+d));if(r<m)m=r}if(m<0.08){n++;err+=m}}
+    if(n>best.n||(n===best.n&&err<best.err))best={d,n,err}}
+  const res=[];for(const tp of taps){let m=null;for(const c of clicks){const r=tp-(c+best.d);if(m===null||Math.abs(r)<Math.abs(m))m=r}if(Math.abs(m)<0.08)res.push(best.d+m)}
+  return {ms:Math.round(median(res)*1000),matched:res.length};
+}
+if(typeof module!=='undefined')module.exports={estimateDelay,parseMidi,tempoMap,chartFromMidi,parseChart,parseIni,detectPitch,pitchDiff,resolveBinds,makeDemoChart,median,midiOf,lastTime,readZip,estimateDelay};
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -882,6 +894,28 @@ const inputs={guitar:store.get('in.guitar',{src:'keys'}),bass:store.get('in.bass
 const hexA=(h,a)=>{const n=parseInt(h.slice(1),16);return `rgba(${n>>16},${(n>>8)&255},${n&255},${Math.max(0,Math.min(1,a))})`};
 function toast(msg,ms=3500){const t=$('#toast');if(!msg){clearTimeout(toast.h);t.classList.remove('on');return}t.textContent=msg;t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),ms)}
 
+// iOS only offers AirPlay for audio that belongs to a media element. The game's sound is Web Audio, so a
+// silent looping <audio> element claims "Now Playing" for the page. Picking a speaker or TV in Control
+// Center (or with the AirPlay button) then moves all of the page's sound there, game audio included.
+const nowPlaying={el:null,url:null,
+  silentWav(){const sr=8000,n=sr,b=new ArrayBuffer(44+n*2),v=new DataView(b),w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+    w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+    v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+    return URL.createObjectURL(new Blob([b],{type:'audio/wav'}))},
+  ensure(){if(this.el)return this.el;const a=document.createElement('audio');a.loop=true;a.setAttribute('playsinline','');a.setAttribute('x-webkit-airplay','allow');
+    a.src=this.url=this.silentWav();a.preload='auto';document.body.appendChild(a);this.el=a;
+    if(window.WebKitPlaybackTargetAvailabilityEvent)a.addEventListener('webkitplaybacktargetavailabilitychanged',e=>{$$('.airplayBtn').forEach(b=>b.hidden=e.availability!=='available')});
+    if('mediaSession' in navigator){const ms=navigator.mediaSession;
+      try{ms.setActionHandler('pause',()=>{if(G&&G.running)pause()});ms.setActionHandler('play',()=>{if(G&&G.paused)resume()})}catch(e){}}
+    return a},
+  start(){const a=this.ensure();const p=a.play();if(p&&p.catch)p.catch(()=>{});this.meta()},
+  meta(title,artist){if(!('mediaSession' in navigator)||!window.MediaMetadata)return;
+    navigator.mediaSession.metadata=new MediaMetadata({title:title||'BACKLIT',artist:artist||'BACKLIT',album:'BACKLIT',
+      artwork:[{src:'icon-512.png',sizes:'512x512',type:'image/png'},{src:'icon-192.png',sizes:'192x192',type:'image/png'}]})},
+  picker(){const a=this.ensure();this.start();if(a.webkitShowPlaybackTargetPicker)a.webkitShowPlaybackTargetPicker()}
+};
+// the first tap anywhere claims Now Playing (iOS only allows media to start from a tap)
+addEventListener('pointerdown',()=>nowPlaying.start(),{once:true,capture:true});
 let ctx=null;
 function audio(){if(!ctx)ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});if(ctx.state==='suspended'&&!(G&&G.paused))ctx.resume();return ctx}
 
@@ -1054,13 +1088,17 @@ function openCalib(){
 $('#audCal').oninput=e=>{settings.audioCal=+e.target.value;$('#audVal').textContent=e.target.value;saveSettings()};
 $('#vrCal').oninput=e=>{settings.vrVideoCal=+e.target.value;$('#vrVal').textContent=e.target.value;saveSettings()};
 $('#vidCal').oninput=e=>{settings.videoCal=+e.target.value;$('#vidVal').textContent=e.target.value;saveSettings()};
-$('#calStart').onclick=()=>{const c=audio();const t0=c.currentTime+1;calib.clicks=[];calib.taps=[];
-  for(let i=0;i<20;i++){const t=t0+i*0.5;calib.clicks.push(t);click(c,t,i%4?1000:1600)}
-  calib.active=true;$('#calMsg').textContent='Tap on every click…';
-  setTimeout(()=>{calib.active=false;const offs=[];
-    for(const tp of calib.taps){let best=null;for(let i=4;i<calib.clicks.length;i++){const d=tp-calib.clicks[i];if(best==null||Math.abs(d)<Math.abs(best))best=d}if(best!=null&&Math.abs(best)<0.25)offs.push(best)}
-    if(offs.length<8){$('#calMsg').textContent='Not enough taps landed. Try again.';return}
-    settings.audioCal=Math.round(median(offs)*1000);saveSettings();openCalib();$('#calMsg').textContent=`Sound delay set to ${settings.audioCal} ms.`},(t0-c.currentTime+10.4)*1000)};
+const CAL_GAPS=[0.62,0.95,0.7,1.15,0.6,0.85,1.05,0.65,0.9,0.75,1.2,0.6,0.8,1.0,0.7,0.9];
+$('#calStart').onclick=()=>{const c=audio();nowPlaying.start();const t0=c.currentTime+1;calib.clicks=[];calib.taps=[];
+  let t=t0;for(let i=0;i<CAL_GAPS.length;i++){calib.clicks.push(t);click(c,t,i%4?1000:1600);t+=CAL_GAPS[i]}
+  const listenFor=t-c.currentTime+3.8;   // keep listening long enough for slow AirPlay sound to arrive
+  calib.active=true;$('#calMsg').textContent='Tap on every click you hear: tap the screen, hit a pad, or press space.';
+  setTimeout(()=>{calib.active=false;
+    const r=estimateDelay(calib.clicks,calib.taps);
+    if(r.matched<8){$('#calMsg').textContent='Not enough taps lined up with the clicks. Try again.';return}
+    settings.audioCal=r.ms;saveSettings();openCalib();
+    $('#calMsg').textContent=`Sound delay set to ${settings.audioCal} ms.`+(r.ms>400?' That is a long delay, typical of AirPlay or Bluetooth. Recalibrate when you switch back.':'')},listenFor*1000)};
+$('#scr-calib').addEventListener('pointerdown',e=>{if(calib.active&&!e.target.closest('button,input')){e.preventDefault();calib.tap()}});
 calib.tap=()=>{calib.taps.push(ctx.currentTime)};
 function drawCalib(){
   const cc=$('#calCanvas'),r=cc.getBoundingClientRect();if(!r.width)return;const d=Math.min(2,devicePixelRatio||1);
@@ -1288,6 +1326,7 @@ async function loadStems(s){
 let G=null;
 const newStats=()=>({score:0,streak:0,best:0,mult:1,hits:0,meter:0.5,next:0,flash:[0,0,0,0,0],fx:[],total:0});
 async function startGame(s,opt={}){
+  nowPlaying.start();nowPlaying.meta(s.title,s.artist||'BACKLIT');
   const c=audio();$('#songDetail').insertAdjacentHTML('beforeend','<p id="loadMsg">Loading audio…</p>');
   if(G)stopGame();
   const P={},cfg=cfgMem,only=opt.only;
@@ -1317,8 +1356,9 @@ async function startGame(s,opt={}){
   S.pulse=0;if(Stage3D)Stage3D.reset('crowd');if(xr.active)Stage3D.xrSetRole(roleFor(P));$('#pauseBtn').hidden=false;go('none');
 }
 function stopGame(){$('#pauseBtn').hidden=true;if(!G)return;for(const s of G.srcs)try{s.stop()}catch(e){}try{G.master.disconnect()}catch(e){}G.running=false}
-function pause(){if(!G||G.paused)return;G.paused=true;$('#pauseBtn').hidden=true;ctx.suspend();go('pause')}
-function resume(){if(!G)return;G.paused=false;$('#pauseBtn').hidden=false;ctx.resume();go('none')}
+function pause(){if(!G||G.paused)return;if('mediaSession' in navigator)navigator.mediaSession.playbackState='paused';G.paused=true;$('#pauseBtn').hidden=true;ctx.suspend();go('pause')}
+function resume(){if(!G)return;if('mediaSession' in navigator)navigator.mediaSession.playbackState='playing';G.paused=false;$('#pauseBtn').hidden=false;ctx.resume();go('none')}
+$$('.airplayBtn').forEach(b=>b.onclick=()=>nowPlaying.picker());
 $('#pauseBtn').onclick=e=>{e.currentTarget.blur();pause()};
 $('#resumeBtn').onclick=resume;
 $('#restartBtn').onclick=()=>{const s=G.song;stopGame();G=null;ctx.resume().then(()=>startGame(s))};
