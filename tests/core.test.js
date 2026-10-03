@@ -44,4 +44,9 @@ const lanesOk=d.parts.drums.easy.length<d.parts.drums.medium.length&&d.parts.dru
  const kt=trk([[0,name('PART KEYS')],[480,[0x90,97,100]],[120,[0x80,97,0]]]);
  const km=C.chartFromMidi(C.parseMidi(new Uint8Array([...Buffer.from('MThd'),0,0,0,6,0,1,0,2,0x01,0xE0,...t0,...kt]).buffer));
  ok(km.parts.keys&&km.parts.keys.expert[0].lanes[0]===1,'midi PART KEYS');}
+// tap-test delay: short (laptop), medium (TV) and long (AirPlay) delays, with jitter, a missed tap and a stray one
+{const gaps=[0.62,0.95,0.7,1.15,0.6,0.85,1.05,0.65,0.9,0.75,1.2,0.6,0.8,1.0,0.7,0.9];const clicks=[];let t=1;for(const g of gaps){clicks.push(t);t+=g}
+ let seed=3;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647-0.5};
+ for(const d of [0.04,0.18,2.1,3.2]){const taps=clicks.filter((_,i)=>i!==5).map(c=>c+d+rnd()*0.05);taps.push(clicks[3]+d+0.4);
+   const r=C.estimateDelay(clicks,taps);ok(Math.abs(r.ms-d*1000)<25&&r.matched>=13,`delay ${d*1000}ms measured as ${r.ms}ms (${r.matched} taps matched)`)}}
 console.log(fails?fails+' FAILED':'ALL PASS');
