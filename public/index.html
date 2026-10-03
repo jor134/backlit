@@ -27,6 +27,8 @@ html,body{margin:0;height:100%;background:#000;color:var(--ink);font-family:Barl
 .menu{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
 .btn{background:none;border:0;color:var(--ink);text-shadow:0 0 10px #000,0 0 3px #000;font:700 30px "Big Shoulders Display",Impact,sans-serif;padding:4px 0;cursor:pointer;text-align:left}
 .btn:hover,.btn:focus-visible{color:var(--acid);outline:none;text-shadow:0 0 14px rgba(234,255,0,.7)}
+.navfocus{outline:2px solid var(--acid)!important;outline-offset:3px;box-shadow:0 0 16px rgba(234,255,0,.45)}
+.btn.navfocus,.song.navfocus,summary.navfocus{color:var(--acid);text-shadow:0 0 14px rgba(234,255,0,.7)}
 .btn.small{font-size:22px}
 .btn[disabled]{opacity:.35;cursor:default;text-shadow:none;color:var(--ink)}
 .hint{color:var(--dim);font-size:15px;margin-top:26px}
@@ -921,7 +923,7 @@ function audio(){if(!ctx)ctx=new (window.AudioContext||window.webkitAudioContext
 
 // ---------- screens ----------
 let screen='title';
-function go(n){screen=n;$$('.screen').forEach(s=>s.classList.toggle('on',s.id==='scr-'+n));if(n==='setup')renderSetup();if(n==='calib')openCalib();if(n==='songs'){renderSongs();renderDirBar()}if(n==='boards')openBoards();if(n==='band')renderBand()}
+function go(n){screen=n;if(typeof navLast!=='undefined'&&performance.now()-navLast<30000)setTimeout(()=>navFocus(navTargets()[0]),40);$$('.screen').forEach(s=>s.classList.toggle('on',s.id==='scr-'+n));if(n==='setup')renderSetup();if(n==='calib')openCalib();if(n==='songs'){renderSongs();renderDirBar()}if(n==='boards')openBoards();if(n==='band')renderBand()}
 $$('[data-go]').forEach(b=>b.addEventListener('click',()=>{audio();go(b.dataset.go)}));
 
 // ---------- canvas ----------
@@ -945,8 +947,10 @@ function pollPads(){
 setInterval(pollPads,4);
 function press(role,name){
   if(calib.active){calib.tap();return}
+  if(name==='start'){if(G&&G.running){G.paused?resume():pause();return}if(xr.active){xrNav('ok');return}menuNav('ok');return}
   if(G&&G.running&&!G.paused)gameInput(role,name);
   else if(xr.active)xrNav(navFrom(role,name));
+  else menuNav(navFrom(role,name,true));
 }
 addEventListener('keydown',e=>{
   if(typeof xr!=='undefined'&&xr.active&&!(G&&G.running)){const a={ArrowUp:'up',ArrowDown:'down',Enter:'ok',Space:'ok',Backspace:'back',Escape:'back'}[e.code];if(a){e.preventDefault();xrNav(a);return}}
@@ -961,10 +965,10 @@ addEventListener('blur',()=>keysDown.clear());
 // ---------- mapping ----------
 let mapping=null;
 const MAP_STEPS={
-  keys:[['g','Green key',LANE[0]],['r','Red key',LANE[1]],['y','Yellow key',LANE[2]],['b','Blue key',LANE[3]],['o','Orange key',LANE[4]]],
-  bass:[['g','Green fret',LANE[0]],['r','Red fret',LANE[1]],['y','Yellow fret',LANE[2]],['b','Blue fret',LANE[3]],['o','Orange fret',LANE[4]],['down','Strum down','#ffffff'],['up','Strum up','#ffffff']],
-  guitar:[['g','Green fret',LANE[0]],['r','Red fret',LANE[1]],['y','Yellow fret',LANE[2]],['b','Blue fret',LANE[3]],['o','Orange fret',LANE[4]],['down','Strum down','#ffffff'],['up','Strum up','#ffffff']],
-  drums:[['kick','Kick pedal',KICK],['red','Red pad',LANE[1]],['yellow','Yellow pad',LANE[2]],['blue','Blue pad',LANE[3]],['green','Green pad',LANE[0]]]};
+  keys:[['g','Green key',LANE[0]],['r','Red key',LANE[1]],['y','Yellow key',LANE[2]],['b','Blue key',LANE[3]],['o','Orange key',LANE[4]],['start','Start button (pauses the song)','#ffffff']],
+  bass:[['g','Green fret',LANE[0]],['r','Red fret',LANE[1]],['y','Yellow fret',LANE[2]],['b','Blue fret',LANE[3]],['o','Orange fret',LANE[4]],['down','Strum down','#ffffff'],['up','Strum up','#ffffff'],['start','Start button (pauses the song)','#ffffff']],
+  guitar:[['g','Green fret',LANE[0]],['r','Red fret',LANE[1]],['y','Yellow fret',LANE[2]],['b','Blue fret',LANE[3]],['o','Orange fret',LANE[4]],['down','Strum down','#ffffff'],['up','Strum up','#ffffff'],['start','Start button (pauses the song)','#ffffff']],
+  drums:[['kick','Kick pedal',KICK],['red','Red pad',LANE[1]],['yellow','Yellow pad',LANE[2]],['blue','Blue pad',LANE[3]],['green','Green pad',LANE[0]],['start','Start button (pauses the song)','#ffffff']]};
 function startMapping(role){
   const steps=MAP_STEPS[role];const m={role,steps,phase:'pick',step:0,sets:[],pad:null,base:null,snap:{},since:0,win:null};
   const show=()=>{$('#modal').classList.add('on');
@@ -997,7 +1001,7 @@ function startMapping(role){
   const finish=()=>{const names=steps.map(s=>s[0]);const binds=resolveBinds(m.sets,names);
     const missing=names.filter(n=>!binds[n]);
     inputs[role]={src:'pad',id:m.pad.id,index:m.pad.index,binds};store.set('in.'+role,inputs[role]);
-    close();renderSetup();toast(missing.length?`Mapped, except: ${missing.join(', ')}. Keyboard covers those.`:`${role==='guitar'?'Guitar':'Drums'} mapped.`)};
+    close();renderSetup();toast(missing.filter(n=>n!=='start').length?`Mapped, except: ${missing.filter(n=>n!=='start').join(', ')}. Keyboard covers those.`:`${PART_NAME[role]} mapped. It can now drive the menus too.`)};
   const close=()=>{$('#modal').classList.remove('on');mapping=null};
   m.skip=()=>{if(m.phase==='pick')return;m.sets[m.step]=[];m.win=null;next()};
   m.cancel=()=>{close()};
@@ -1687,6 +1691,42 @@ function frame(nowMs){
 function winLoop(ms){if(xr.active)return;frame(ms);requestAnimationFrame(winLoop)}
 requestAnimationFrame(winLoop);
 
+// ---------- driving the page menus from the instruments ----------
+// Guitar/bass: strum up/down to move, green to choose, red to go back, yellow/blue to change a setting.
+// Drums: red/yellow pads to move, green pad or kick to choose, blue to go back. Keys: yellow/blue move, green choose, red back.
+let navLast=0;
+function navTargets(){
+  const root=$('#modal').classList.contains('on')?$('#modal'):$('#scr-'+screen);if(!root)return [];
+  return [...root.querySelectorAll('button,summary,a.btn,select,input[type=range],input[type=checkbox]')].filter(el=>{
+    if(el.disabled||el.closest('[hidden]')||el.offsetParent===null)return false;
+    const d=el.closest('details');if(d&&!d.open&&el.tagName!=='SUMMARY')return false;
+    return true});
+}
+function navFocus(el){$$('.navfocus').forEach(x=>x.classList.remove('navfocus'));if(!el)return;el.classList.add('navfocus');el.focus({preventScroll:true});el.scrollIntoView({block:'nearest'})}
+function navStep(el,dir){
+  if(el.tagName==='SELECT'){const i=Math.max(0,Math.min(el.options.length-1,el.selectedIndex+dir));if(i!==el.selectedIndex){el.selectedIndex=i;el.dispatchEvent(new Event('change',{bubbles:true}))}return true}
+  if(el.type==='range'){const st=(+el.max-+el.min)/20;el.value=Math.max(+el.min,Math.min(+el.max,+el.value+dir*st));el.dispatchEvent(new Event('input',{bubbles:true}));return true}
+  return false;
+}
+function menuNav(a){
+  if(!a||mapping)return;const n=performance.now();if(n-navLast<120)return;navLast=n;
+  if(screen==='none')return;
+  const list=navTargets();let i=list.indexOf(document.activeElement);
+  if(a==='up'||a==='down'){if(!list.length)return;i=i<0?0:(i+(a==='up'?-1:1)+list.length)%list.length;navFocus(list[i]);return}
+  const el=list[i];
+  if(a==='left'||a==='right'){if(el)navStep(el,a==='left'?-1:1);return}
+  if(a==='ok'){if(!el){navFocus(list[0]);return}
+    if(el.tagName==='SELECT'){if(!navStep(el,1)){el.selectedIndex=0;el.dispatchEvent(new Event('change',{bubbles:true}))}return}
+    if(el.type==='range')return;
+    el.click();setTimeout(()=>{if(!document.activeElement||document.activeElement===document.body||!navTargets().includes(document.activeElement))navFocus(navTargets()[0])},60);return}
+  if(a==='back'){
+    if(!$('#addMenu').hidden){$('#addMenu').hidden=true;return}
+    if(screen==='pause'){resume();return}
+    const to={songs:'title',setup:'title',calib:'title',boards:'title',band:'title',results:'songs'}[screen];
+    if(to){go(to);setTimeout(()=>navFocus(navTargets()[0]),30)}}
+}
+addEventListener('pointerdown',()=>$$('.navfocus').forEach(x=>x.classList.remove('navfocus')),{capture:true});
+
 // ---------- WebXR: play from the stage ----------
 const xr={active:false,session:null,role:null,supported:false,canvas:document.createElement('canvas'),trig:{},lastAction:0};
 xr.ctx=xr.canvas.getContext('2d');
@@ -1708,10 +1748,10 @@ async function enterVR(role){
 // Moving:    strum up/down (guitar, bass), yellow/blue keys (keys), red/yellow pads (drums), thumbstick, arrow keys
 // Choosing:  green fret/key/pad or kick, trigger or A/X button, Enter
 // Going back: red fret/key, blue pad, B/Y button, Backspace
-function navFrom(role,name){
+function navFrom(role,name,page){
   if(role==='drums')return {red:'up',yellow:'down',green:'ok',kick:'ok',blue:'back'}[name];
-  if(role==='keys')return {y:'up',b:'down',g:'ok',r:'back'}[name];
-  return {up:'up',down:'down',g:'ok',r:'back'}[name];
+  if(role==='keys')return {y:'up',b:'down',g:'ok',r:'back',o:'right'}[name];
+  return {up:'up',down:'down',g:'ok',r:'back',y:'left',b:'right'}[name];   // on the page, yellow/blue frets change a setting
 }
 const NAME_CHARS=' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 xr.view='songs';xr.sel=0;xr.status='';xr.name=null;
