@@ -1609,7 +1609,7 @@ function pad(x,y,w,h,c,a){g.save();g.globalAlpha=a;g.fillStyle='#000';g.fillRect
 
 function drawVocals(V,R,drawT){
   const notes=V.notes;let lo=127,hi=0;for(const n of notes){lo=Math.min(lo,n.pitch);hi=Math.max(hi,n.pitch)}lo-=2;hi+=2;if(hi-lo<12){const m=(hi+lo)/2;lo=m-6;hi=m+6}
-  const nowX=R.x+R.w*0.16,pps=(R.x+R.w-nowX)/4,lh=R.h*0.7,ly=R.y+R.h*0.05,py=p=>ly+lh*(1-(p-lo)/(hi-lo));
+  const nowX=R.x+R.w*0.16,pps=(R.x+R.w-nowX)/4,lh=R.h*0.54,ly=R.y+R.h*0.04,py=p=>ly+lh*(1-(p-lo)/(hi-lo));
   g.fillStyle='rgba(0,0,0,0.85)';g.fillRect(R.x,R.y,R.w,R.h);
   neon('#00f0ff',0.5,1,()=>{g.moveTo(R.x,R.y);g.lineTo(R.x+R.w,R.y);g.moveTo(R.x,R.y+R.h);g.lineTo(R.x+R.w,R.y+R.h)});
   for(let i=Math.max(0,V.next-12);i<notes.length;i++){const n=notes[i];if(n.t>drawT+4)break;if(n.end<drawT-1.2)continue;const x1=nowX+(n.t-drawT)*pps,x2=nowX+(n.end-drawT)*pps,y=py(n.pitch);
@@ -1622,23 +1622,31 @@ function drawVocals(V,R,drawT){
   g.save();g.globalCompositeOperation='lighter';g.strokeStyle=hexA('#ff2bd6',0.9);g.lineWidth=3;g.beginPath();let st=false;
   for(const hpt of V.hist){const q=fold(hpt.p);if(q==null){st=false;continue}const x=nowX+(hpt.t-drawT)*pps,y=py(Math.max(lo,Math.min(hi,q)));if(!st){g.moveTo(x,y);st=true}else g.lineTo(x,y)}g.stroke();g.restore();
   const cq=fold(V.cur);if(cq!=null){const y=py(Math.max(lo,Math.min(hi,cq)));g.fillStyle='#ff2bd6';g.beginPath();g.moveTo(nowX+2,y);g.lineTo(nowX-12,y-7);g.lineTo(nowX-12,y+7);g.fill()}
-  // lyrics
-  const ph=V.phrases.length?(V.phrases.find(p=>p.end>=drawT-0.1)):null;let line=[];
-  if(ph)line=notes.filter(n=>n.t>=ph.t-0.01&&n.t<ph.end);else{const i0=notes.findIndex(n=>n.end>=drawT);if(i0>=0)line=notes.slice(i0,i0+8)}
-  // lyrics must fit the strip: shrink long lines to fit, and if a line is still too long at the
-  // smallest readable size, slide it so the syllable being sung stays in view
-  const parts=[];for(let i=0;i<line.length;i++){const raw=line[i].lyric||'';if(raw.startsWith('+'))continue;const s=cleanSyl(raw).replace(/-$/,''),join=raw.replace(/[#^]/g,'').endsWith('-');parts.push([s+(join?'':' '),line[i]])}
-  const pad=Math.max(12,R.w*0.03),maxW=R.w-pad*2,minPx=Math.max(14,Math.round(R.h*0.12));
-  let px=Math.round(R.h*0.2);const setF=()=>{g.font=`600 ${px}px Barlow,"Segoe UI",sans-serif`};setF();g.textAlign='left';
-  const measure=()=>parts.reduce((a,[txt])=>a+g.measureText(txt).width,0);
-  let tw=measure();if(tw>maxW){px=Math.max(minPx,Math.floor(px*maxW/tw));setF();tw=measure()}
-  let lx=R.x+(R.w-tw)/2;
-  if(tw>maxW){let at=0,cur=0;for(const [txt,n] of parts){const w=g.measureText(txt).width;if(n.t<=drawT)cur=at+w/2;at+=w}
-    lx=R.x+pad-Math.max(0,Math.min(tw-maxW,cur-maxW/2))}
-  const lyY=R.y+R.h*0.95;
-  g.save();g.beginPath();g.rect(R.x+pad*0.5,R.y,R.w-pad,R.h);g.clip();
-  for(const [txt,n] of parts){g.fillStyle=n.t<=drawT?'#eaff00':'rgba(255,255,255,.8)';g.fillText(txt,lx,lyY);lx+=g.measureText(txt).width}
-  g.restore();
+  // lyrics: the line being sung, and the next line underneath so you can read ahead
+  const toParts=line=>{const out=[];for(const n of line){const raw=n.lyric||'';if(raw.startsWith('+'))continue;
+    const s=cleanSyl(raw).replace(/-$/,''),join=raw.replace(/[#^]/g,'').endsWith('-');out.push([s+(join?'':' '),n])}return out};
+  let line=[],next=[];
+  if(V.phrases.length){const k=V.phrases.findIndex(p=>p.end>=drawT-0.1);
+    const ofPh=q=>q?notes.filter(n=>n.t>=q.t-0.01&&n.t<q.end):[];
+    if(k>=0){line=ofPh(V.phrases[k]);next=ofPh(V.phrases[k+1])}}
+  else{const i0=notes.findIndex(n=>n.end>=drawT);if(i0>=0){line=notes.slice(i0,i0+8);next=notes.slice(i0+8,i0+16)}}
+  // shrink a long line to fit the strip; if it still overflows at the smallest readable size,
+  // slide it so the syllable being sung stays in view
+  const lpad=Math.max(12,R.w*0.03),maxW=R.w-lpad*2;
+  function lyricLine(parts,y,size,active){
+    if(!parts.length)return;
+    let px=Math.round(R.h*size);const minPx=Math.max(13,Math.round(px*0.6));
+    const setF=()=>{g.font=`600 ${px}px Barlow,"Segoe UI",sans-serif`};setF();g.textAlign='left';
+    const measure=()=>parts.reduce((a,[txt])=>a+g.measureText(txt).width,0);
+    let tw=measure();if(tw>maxW){px=Math.max(minPx,Math.floor(px*maxW/tw));setF();tw=measure()}
+    let lx=R.x+(R.w-tw)/2;
+    if(tw>maxW){if(active){let at=0,cur=0;for(const [txt,n] of parts){const w=g.measureText(txt).width;if(n.t<=drawT)cur=at+w/2;at+=w}
+      lx=R.x+lpad-Math.max(0,Math.min(tw-maxW,cur-maxW/2))}else lx=R.x+lpad}
+    g.save();g.beginPath();g.rect(R.x+lpad*0.5,R.y,R.w-lpad,R.h);g.clip();
+    for(const [txt,n] of parts){g.fillStyle=active?(n.t<=drawT?'#eaff00':'rgba(255,255,255,.9)'):'rgba(255,255,255,.42)';g.fillText(txt,lx,y);lx+=g.measureText(txt).width}
+    g.restore()}
+  lyricLine(toParts(line),R.y+R.h*0.78,0.17,true);
+  lyricLine(toParts(next),R.y+R.h*0.95,0.13,false);
   g.textAlign='left';g.fillStyle='#fff';g.font=font(Math.round(R.h*0.22));g.fillText(V.score.toLocaleString(),R.x+12,R.y+R.h*0.3);
   g.fillStyle=[null,'#fff','#39ff14','#00c8ff','#ff2bd6'][V.mult];g.font=font(Math.round(R.h*0.18));g.fillText('×'+V.mult,R.x+12,R.y+R.h*0.52);
 }
@@ -1664,7 +1672,7 @@ function frame(nowMs){
     updateGame(dt);if(!G)return;
     const now=ctx.currentTime-G.t0,drawT=now-settings.audioCal/1000+settings.videoCal/1000;
     decayStage(dt);
-    const hasV=!!G.P.vocals,stageH=H*(hasV?0.34:0.42),vH=hasV?Math.max(96,H*0.14):0;
+    const hasV=!!G.P.vocals,stageH=H*(hasV?0.32:0.42),vH=hasV?Math.max(120,H*0.17):0;
     if(Stage3D){g.clearRect(0,0,W,H);Stage3D.info={game:true,vocal:!!S.vAct};Stage3D.render(dt,t,stageH)}else drawStage(0,0,W,stageH,t);
     if(S.flash>0.02){g.fillStyle=`rgba(255,255,255,${(S.flash*0.16).toFixed(3)})`;g.fillRect(0,0,W,stageH)}
     g.fillStyle='#000';g.fillRect(0,stageH,W,H-stageH);
@@ -1838,7 +1846,7 @@ function drawXRPanel(drawT,now){
   const saved=g;g=x;
   try{
     if(playing){
-      const n=[G.P.guitar,G.P.bass,G.P.keys,G.P.drums].filter(Boolean).length,vH=G.P.vocals?(n?Math.round(ch*0.24):ch):0;
+      const n=[G.P.guitar,G.P.bass,G.P.keys,G.P.drums].filter(Boolean).length,vH=G.P.vocals?(n?Math.round(ch*0.3):ch):0;
       drawPlayfield(0,0,cw,ch,drawT,vH);
       let band=0;for(const k in G.P)band+=G.P[k].score;
       g.textAlign='right';g.fillStyle='#fff';g.font=font(40);g.fillText(band.toLocaleString(),cw-14,vH+44);
