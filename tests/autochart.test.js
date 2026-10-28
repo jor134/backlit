@@ -68,6 +68,19 @@ const src=x=>C.toMono([x],SR);
   ok(Math.abs(rm.bpm-BPM)<=1,'full mix: tempo found');
   ok(rec(kicksTrue,Km)>0.7,`full mix: kick ${(100*rec(kicksTrue,Km)|0)}% found`);
   ok(!cm.parts.vocals,'full mix: no fake vocals');
+  // guessing the singing from a stereo full song: singer in the centre with vibrato, guitar panned to one side,
+  // bass and drums centred, guitar still playing between the sung phrases
+  {const voice=track();for(const sg of sung){const f=hz(sg.p);let ph=0;add(voice,sg.t,0.46,u=>{ph+=2*Math.PI*f*(1+0.012*Math.sin(2*Math.PI*5.5*u))/SR;
+      let v=0;for(let h=1;h<=6;h++)v+=Math.sin(h*ph)/(h*h*0.7+0.3);return 0.45*v*Math.min(1,u*40)})}
+   const L=new Float32Array(n),Rr=new Float32Array(n);for(let i=0;i<n;i++){const ctr=drums[i]*0.7+bass[i]*0.8+voice[i];L[i]=ctr+gtr[i]*0.85;Rr[i]=ctr+gtr[i]*0.25}
+   const t2=Date.now(),rg=await C.autoChart({mix:C.toMono([L,Rr],SR),mixLR:C.toStereo([L,Rr],SR)},{guessVocals:true,lyrics:''});
+   const cg2=C.chartFromMidi(C.parseMidi(rg.midi.buffer)),dg=rg.delayMs/1000,GV=cg2.parts.vocals?cg2.parts.vocals.notes.map(v=>({...v,t:v.t+dg,end:v.end+dg})):[];
+   const hitsG=sung.filter(sg=>GV.some(v=>Math.abs(v.t-sg.t)<0.12&&Math.abs(v.pitch-sg.p)<=1)).length;
+   const inVoice=GV.filter(v=>sung.some(sg=>v.t<sg.t+0.46&&v.end>sg.t)).length;
+   console.log(`  guessed singing: ${((Date.now()-t2)/1000).toFixed(1)}s, ${GV.length} notes`);if(process.env.DBG){console.log("  sung:   ",sung.map(s=>s.t.toFixed(2)+":"+s.p).join(" "));console.log("  guessed:",GV.map(v=>v.t.toFixed(2)+"-"+v.end.toFixed(2)+":"+v.pitch).join(" "))}
+   ok(rg.vocalsGuessed,'full song: singing guessed');
+   ok(hitsG>=0.7*sung.length,`guessed notes match the singer: ${hitsG}/${sung.length} at the right time and pitch`);
+   ok(GV.length&&inVoice/GV.length>=0.8,`guessed notes fall where someone sings: ${inVoice}/${GV.length}`);}
   // zip round trip
   const zp=C.writeZip([{name:'Band - Song/notes.mid',data:r.midi},{name:'Band - Song/song.ini',data:new TextEncoder().encode('[song]\nname = Song\n')}]);
   const blob=new Blob(zp),entries=await C.readZip(blob);
