@@ -182,6 +182,8 @@ a.btn{text-decoration:none}
     <button class="btn small" id="micBtn">Turn on mic</button>
    </div>
   </div>
+  <label class="chk" style="margin-top:18px"><input type="checkbox" id="instNav"> Use instruments to move around the menus</label>
+  <p class="note">Turn this off if bumps and stray presses keep choosing things in the menus. The Start button still pauses during a song, and VR menus always work from the instruments and controllers.</p>
   <button class="btn" data-go="title">Back</button>
  </div>
 </section>
@@ -1173,7 +1175,7 @@ const KEYS={guitar:{g:'KeyA',r:'KeyS',y:'KeyD',b:'KeyF',o:'KeyG',down:'ArrowDown
 const keyLookup={};for(const r in KEYS)for(const n in KEYS[r])keyLookup[KEYS[r][n]]=[r,n];
 
 const store={get(k,d){try{const v=localStorage.getItem('backlit.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('backlit.'+k,JSON.stringify(v))}catch(e){}}};
-const settings=Object.assign({trackAlpha:0.5,vrVideoCal:0,audioCal:0,videoCal:0,guide:0.6,aec:true,micId:'',monitor:0,reverb:0.3},store.get('settings',{}));
+const settings=Object.assign({instNav:true,trackAlpha:0.5,vrVideoCal:0,audioCal:0,videoCal:0,guide:0.6,aec:true,micId:'',monitor:0,reverb:0.3},store.get('settings',{}));
 const saveSettings=()=>store.set('settings',settings);
 const inputs={guitar:store.get('in.guitar',{src:'keys'}),bass:store.get('in.bass',{src:'keys'}),keys:store.get('in.keys',{src:'keys'}),drums:store.get('in.drums',{src:'keys'})};
 
@@ -1207,7 +1209,7 @@ function audio(){if(!ctx)ctx=new (window.AudioContext||window.webkitAudioContext
 
 // ---------- screens ----------
 let screen='title';
-function go(n){screen=n;if(typeof navLast!=='undefined'&&performance.now()-navLast<30000)setTimeout(()=>navFocus(navTargets()[0]),40);$$('.screen').forEach(s=>s.classList.toggle('on',s.id==='scr-'+n));if(n==='setup')renderSetup();if(n==='calib')openCalib();if(n==='songs'){renderSongs();renderDirBar()}if(n==='boards')openBoards();if(n==='band')renderBand()}
+function go(n){screen=n;if(typeof navLast!=='undefined'&&settings.instNav&&performance.now()-navLast<30000)setTimeout(()=>navFocus(navTargets()[0]),40);$$('.screen').forEach(s=>s.classList.toggle('on',s.id==='scr-'+n));if(n==='setup')renderSetup();if(n==='calib')openCalib();if(n==='songs'){renderSongs();renderDirBar()}if(n==='boards')openBoards();if(n==='band')renderBand()}
 $$('[data-go]').forEach(b=>b.addEventListener('click',()=>{audio();go(b.dataset.go)}));
 
 // ---------- canvas ----------
@@ -1231,10 +1233,10 @@ function pollPads(){
 setInterval(pollPads,4);
 function press(role,name){
   if(calib.active){calib.tap();return}
-  if(name==='start'){if(G&&G.running){G.paused?resume():pause();return}if(xr.active){xrNav('ok');return}menuNav('ok');return}
+  if(name==='start'){if(G&&G.running){G.paused?resume():pause();return}if(xr.active){xrNav('ok');return}if(settings.instNav)menuNav('ok');return}
   if(G&&G.running&&!G.paused)gameInput(role,name);
   else if(xr.active)xrNav(navFrom(role,name));
-  else menuNav(navFrom(role,name,true));
+  else if(settings.instNav)menuNav(navFrom(role,name,true));
 }
 addEventListener('keydown',e=>{
   if(typeof xr!=='undefined'&&xr.active&&!(G&&G.running)){const a={ArrowUp:'up',ArrowDown:'down',Enter:'ok',Space:'ok',Backspace:'back',Escape:'back'}[e.code];if(a){e.preventDefault();xrNav(a);return}}
@@ -1345,6 +1347,7 @@ function renderMicRow(){
   $('#monNote').textContent=settings.monitor>0?'Headphones avoid squeal and delay. Speaker filtering is off while you hear yourself.':'';
 }
 function renderSetup(){
+  $('#instNav').checked=settings.instNav;
   $('#stGuitar').textContent=statusText('guitar');$('#stBass').textContent=statusText('bass');$('#stKeys').textContent=statusText('keys');$('#stDrums').textContent=statusText('drums');
   $('#dotsKeys').innerHTML=FRETS.map((f,i)=>`<span class="dot" style="color:${LANE[i]}"></span>`).join('');
   for(const id of ['#dotsGuitar','#dotsBass'])$(id).innerHTML=FRETS.map((f,i)=>`<span class="dot" style="color:${LANE[i]}"></span>`).join('')+'<span class="dot kick" style="color:#fff"></span>';
@@ -1359,6 +1362,7 @@ function updateSetupLive(){
   if(mic.on){readMic();$('#micLvl').style.width=Math.min(100,mic.rms*600)+'%';$('#stMic').textContent='Mic is on.';
     $('#micNote').textContent=mic.f?`Hearing ${NOTE_NAMES[Math.round(midiOf(mic.f))%12]} (${Math.round(mic.f)} Hz)`:'Sing a note to test.'}
 }
+$('#instNav').onchange=e=>{settings.instNav=e.target.checked;saveSettings();if(!settings.instNav)$$('.navfocus').forEach(x=>x.classList.remove('navfocus'))};
 $$('[data-map]').forEach(b=>b.onclick=()=>startMapping(b.dataset.map));
 $$('[data-keys]').forEach(b=>b.onclick=()=>{inputs[b.dataset.keys]={src:'keys'};store.set('in.'+b.dataset.keys,inputs[b.dataset.keys]);renderSetup()});
 $('#micBtn').onclick=async()=>{try{await startMic();$('#micBtn').textContent='Restart mic'}catch(e){$('#stMic').textContent='Mic blocked or missing. Allow microphone access in the address bar.'}};
