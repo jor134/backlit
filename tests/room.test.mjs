@@ -65,4 +65,30 @@ ok(room.hostId !== undefined && room.players.size === 2 && room.hostId === guest
 host.sent.length = 0;
 room.onMessage(room.players.get(guest.last('you').id), { t: 'song', song: { id: 'new-song-1', title: 'Next' } });
 ok(room.song.id === 'new-song-1' && [...room.players.values()].every(p => !p.ready && !p.result), 'new song resets ready flags and results');
+// harmony: sections reported by each player, decided by the room
+{
+  const r2 = new Room({}, {});
+  const join2 = async name => { const req = { headers: { get: k => k === 'Upgrade' ? 'websocket' : null }, url: 'https://x/api/room?code=HARM&name=' + name };
+    const before = new Set(r2.players.keys()); await r2.fetch(req); return [...r2.players.values()].find(q => !before.has(q.id)); };
+  const a = await join2('A'), b = await join2('B'), c = await join2('C');
+  a.ws.emit({ t: 'part', part: 'drums' }); b.ws.emit({ t: 'part', part: 'guitar' }); c.ws.emit({ t: 'part', part: 'vocals' });
+  a.ws.emit({ t: 'song', song: { id: 'song-abc1', title: 'S' } });
+  for (const p of [a, b, c]) { p.ws.emit({ t: 'have', ok: true }); p.ws.emit({ t: 'ready', ok: true }); }
+  a.ws.emit({ t: 'start' });
+  const sect = (p, i, had, clean) => p.ws.emit({ t: 'sect', i, had, clean });
+  sect(a, 0, true, true); sect(b, 0, true, true);
+  ok(!b.ws.last('harmony'), 'waits for every player before deciding');
+  sect(c, 0, false, true);                                   // singer had no notes in this section
+  let h = b.ws.last('harmony');
+  ok(h && h.ok && h.n === 2 && h.add === 500 && h.streak === 1, 'two clean players with notes = harmony 500');
+  ok(a.bonus === 250 && b.bonus === 250 && c.bonus === 0, 'bonus goes to the players who played it');
+  sect(a, 1, true, true); sect(b, 1, true, true); sect(c, 1, true, true);
+  h = c.ws.last('harmony'); ok(h.ok && h.streak === 2 && h.mult === 2 && h.add === 1500, 'band streak 2 doubles it (3 players)');
+  sect(a, 2, true, true); sect(b, 2, true, false); sect(c, 2, true, true);
+  h = a.ws.last('harmony'); ok(!h.ok && r2.bandStreak === 0, 'one slip resets the band streak');
+  sect(a, 3, true, true); sect(b, 3, true, true);            // singer never reports
+  await new Promise(r => setTimeout(r, 2700));
+  h = a.ws.last('harmony'); ok(h.ok && h.i === 3 && h.n === 2, 'a missing report times out instead of blocking');
+  ok(a.ws.last('state').players.find(q => q.id === a.id).bonus === 1000, 'bonuses shown in the room state');
+}
 console.log(fails ? fails + ' FAILED' : 'ALL PASS');
